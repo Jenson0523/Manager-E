@@ -14,3 +14,8 @@ target/
 .settings/
 *.swp
 *~
+application-local.yml
+application-local.properties
+*.pid
+*.orig
+.env
