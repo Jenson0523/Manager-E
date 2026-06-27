@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: tengyei-backend
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+tengyei:
+  jwt:
+    secret: ${TENGYEI_JWT_SECRET}
+    expire-hours: 2
+    refresh-before-minutes: 30
