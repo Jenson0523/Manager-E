@@ -1,0 +1,36 @@
+:root {
+  /* Brand colors — dark luxury theme */
+  --color-primary: #3b82f6;
+  --color-primary-dark: #1d4ed8;
+  --color-primary-light: #60a5fa;
+
+  /* Sidebar */
+  --sidebar-bg: #0f1117;
+  --sidebar-text: #c8ccd4;
+  --sidebar-text-active: #ffffff;
+  --sidebar-active-bg: rgba(59, 130, 246, 0.15);
+  --sidebar-width: 220px;
+
+  /* Content area */
+  --content-bg: #f5f7fa;
+  --card-bg: #ffffff;
+  --border-color: #e4e7ec;
+
+  /* Typography */
+  --text-primary: #1a1d23;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+
+  /* Status */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.16);
+
+  /* Transitions */
+  --transition-base: 0.2s ease;
+}
