@@ -1,8 +1,10 @@
 package com.tengyei.common.config;
 
+import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.handler.TenantLineHandler;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.TenantLineInnerInterceptor;
 import com.tengyei.common.context.TenantContext;
 import net.sf.jsqlparser.expression.Expression;
@@ -39,6 +41,7 @@ public class MybatisPlusConfig {
                 return TenantContext.isSuperAdmin() || IGNORE_TABLES.contains(tableName);
             }
         }));
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
         return interceptor;
     }
 
