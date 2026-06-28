@@ -1,0 +1,28 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: tengyei-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: Tengyei@2026
+      MYSQL_DATABASE: tengyei_dev
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - tengyei_mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+
+  redis:
+    image: redis:7-alpine
+    container_name: tengyei-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - tengyei_redis_data:/data
+
+volumes:
+  tengyei_mysql_data:
+  tengyei_redis_data:

@@ -1,0 +1,23 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;NON_KEYWORDS=USER;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/h2
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+tengyei:
+  jwt:
+    secret: ${TENGYEI_JWT_SECRET:TestSecretKey@2026#MustBe32CharsLongXX}
+    expire-hours: 2
+    refresh-before-minutes: 30

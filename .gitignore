@@ -1,0 +1,8 @@
+# Local tool scratch (Superpowers brainstorm artifacts, WorkBuddy notes)
+.superpowers/
+.workbuddy/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
