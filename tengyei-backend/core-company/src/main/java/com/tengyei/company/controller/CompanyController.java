@@ -16,12 +16,12 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/companies")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('PERM_*')")
 public class CompanyController {
 
     private final CompanyService companyService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<PageResult<CompanyVO>> page(
             @RequestParam(name = "page", defaultValue = "1") long page,
             @RequestParam(name = "size", defaultValue = "20") long size,
@@ -30,23 +30,27 @@ public class CompanyController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<CompanyVO> detail(@PathVariable("id") Long id) {
         return Result.ok(companyService.detail(id));
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<Map<String, Long>> create(@Valid @RequestBody CompanyCreateDTO dto) {
         Long id = companyService.create(dto);
         return Result.ok(Map.of("id", id));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<Void> update(@PathVariable("id") Long id, @Valid @RequestBody CompanyUpdateDTO dto) {
         companyService.update(id, dto);
         return Result.ok();
     }
 
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<Void> changeStatus(@PathVariable("id") Long id, @RequestBody Map<String, Integer> body) {
         companyService.changeStatus(id, body.get("status"));
         return Result.ok();

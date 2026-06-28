@@ -19,6 +19,7 @@
 - **Pagination response:** `com.tengyei.common.response.PageResult<T>` with `records`, `total`, `current`, `size`.
 - **Passwords:** `PasswordEncoder` (BCrypt-12) bean already exists in `SecurityConfig`. New-user initial passwords are encoded before insert.
 - **Reserved table name:** `user` is mapped via `@TableName("user")` (matches existing JdbcTemplate usage which already works against MySQL & H2).
+- **Controller param names:** `maven.compiler.parameters=true` was added to the parent `tengyei-backend/pom.xml` properties during execution so Spring can infer `@PathVariable`/`@RequestParam` names without explicit `name=` attributes (this project uses the spring-boot-dependencies BOM, not the starter parent, so `-parameters` is not on by default).
 
 ---
 
@@ -627,12 +628,12 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/companies")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('PERM_*')")
 public class CompanyController {
 
     private final CompanyService companyService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<PageResult<CompanyVO>> page(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "20") long size,
@@ -641,29 +642,35 @@ public class CompanyController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<CompanyVO> detail(@PathVariable Long id) {
         return Result.ok(companyService.detail(id));
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<Map<String, Long>> create(@Valid @RequestBody CompanyCreateDTO dto) {
         Long id = companyService.create(dto);
         return Result.ok(Map.of("id", id));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody CompanyUpdateDTO dto) {
         companyService.update(id, dto);
         return Result.ok();
     }
 
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('PERM_*')")
     public Result<Void> changeStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         companyService.changeStatus(id, body.get("status"));
         return Result.ok();
     }
 }
 ```
+
+> **Important (learned during execution):** put `@PreAuthorize` on **methods**, never on the controller **class**. A type-level `@PreAuthorize` makes Spring proxy the controller in a way that suppresses `@RequestMapping` detection, so every endpoint returns `NoResourceFoundException` (HTTP 500 / "No static resource"). All controllers in this plan use method-level `@PreAuthorize`.
 
 - [ ] **Step 8: Run the test to verify it passes**
 
