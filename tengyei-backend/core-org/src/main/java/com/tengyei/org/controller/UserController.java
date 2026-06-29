@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -44,7 +45,7 @@ public class UserController {
     public void export(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long deptId,
-            HttpServletResponse response) throws Exception {
+            HttpServletResponse response) throws IOException {
         List<UserExportVO> data = userService.export(keyword, deptId);
         String fileName = URLEncoder.encode("人员列表_" + LocalDate.now(), StandardCharsets.UTF_8)
             .replace("+", "%20");

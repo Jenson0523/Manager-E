@@ -140,6 +140,27 @@ public class UserService {
             sql.append(" AND u.tenant_id = ?");
             params.add(TenantContext.getTenantId());
         }
+
+        // 数据级权限过滤
+        String scope = TenantContext.getDataScope();
+        if ("branch".equals(scope)) {
+            Long branchId = TenantContext.getBranchId();
+            if (branchId != null) {
+                sql.append(" AND u.branch_id = ?");
+                params.add(branchId);
+            }
+        } else if ("dept".equals(scope)) {
+            Long userDeptId = getUserDeptId();
+            if (userDeptId != null) {
+                Set<Long> deptIds = collectSubDeptIds(userDeptId);
+                String inClause = String.join(",", deptIds.stream().map(String::valueOf).toList());
+                sql.append(" AND u.dept_id IN (").append(inClause).append(")");
+            }
+        } else if ("self".equals(scope)) {
+            sql.append(" AND u.id = ?");
+            params.add(TenantContext.getUserId());
+        }
+
         if (StringUtils.hasText(keyword)) {
             sql.append(" AND (u.real_name LIKE ? OR u.username LIKE ? OR u.phone LIKE ?)");
             String kw = "%" + keyword + "%";
