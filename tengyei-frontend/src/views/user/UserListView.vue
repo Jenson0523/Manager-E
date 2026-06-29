@@ -91,6 +91,44 @@ async function exportList() {
   }
 }
 
+/* ---- 批量操作 ---- */
+const selectedIds = ref<number[]>([])
+
+function onSelectionChange(rows: UserVO[]) {
+  selectedIds.value = rows.map(r => r.id)
+}
+
+function clearSelection() {
+  selectedIds.value = []
+}
+
+const batchRoleDialog = ref(false)
+const batchRoleIds = ref<number[]>([])
+
+function openBatchRoles() {
+  batchRoleIds.value = []
+  batchRoleDialog.value = true
+}
+
+async function submitBatchStatus(status: number) {
+  if (!selectedIds.value.length) return
+  const action = status === 1 ? '启用' : '停用'
+  await ElMessageBox.confirm(`确认批量${action} ${selectedIds.value.length} 个用户？`, '提示', { type: 'warning' })
+  await userApi.batchStatus(selectedIds.value, status)
+  ElMessage.success(`已批量${action}`)
+  clearSelection()
+  fetchList()
+}
+
+async function submitBatchRoles() {
+  if (!selectedIds.value.length) return
+  await userApi.batchRoles(selectedIds.value, batchRoleIds.value)
+  ElMessage.success('角色已批量分配')
+  batchRoleDialog.value = false
+  clearSelection()
+  fetchList()
+}
+
 async function fetchList() {
   loading.value = true
   try {
@@ -245,7 +283,16 @@ onMounted(() => {
       <el-button v-if="auth.hasPermission('PERM_user:create')" type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="list" stripe>
+    <div v-if="selectedIds.length" class="batch-bar">
+      <span>已选 {{ selectedIds.length }} 条</span>
+      <el-button size="small" type="success" @click="submitBatchStatus(1)">批量启用</el-button>
+      <el-button size="small" type="warning" @click="submitBatchStatus(0)">批量停用</el-button>
+      <el-button size="small" type="primary" @click="openBatchRoles">批量分配角色</el-button>
+      <el-button size="small" @click="clearSelection">取消选择</el-button>
+    </div>
+
+    <el-table v-loading="loading" :data="list" stripe @selection-change="onSelectionChange">
+      <el-table-column type="selection" width="50" />
       <el-table-column prop="realName" label="姓名" width="120" />
       <el-table-column prop="username" label="账号" width="140" />
       <el-table-column prop="phone" label="手机号" width="140" />
@@ -346,6 +393,19 @@ onMounted(() => {
         <el-button type="primary" @click="saveRoles">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="batchRoleDialog" title="批量分配角色" width="420px">
+      <p style="margin-bottom: 12px; color: #6b7280">将为已选 {{ selectedIds.length }} 个用户统一分配以下角色：</p>
+      <el-checkbox-group v-model="batchRoleIds">
+        <el-checkbox v-for="r in roles" :key="r.id" :value="r.id" style="display: block; margin: 6px 0">
+          {{ r.name }}
+        </el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="batchRoleDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitBatchRoles">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -363,5 +423,16 @@ onMounted(() => {
 .pager {
   margin-top: 16px;
   justify-content: flex-end;
+}
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #374151;
 }
 </style>
