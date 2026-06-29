@@ -14,6 +14,18 @@ export interface AuditLogVO {
   createdAt: string
 }
 
+export interface LoginLogVO {
+  id: number
+  tenantId: number
+  userId: number
+  username: string
+  loginType: string
+  ipAddress: string
+  result: number
+  failReason: string
+  createdAt: string
+}
+
 export const auditApi = {
   page: (params: {
     page?: number
@@ -22,4 +34,15 @@ export const auditApi = {
     startDate?: string
     endDate?: string
   }) => request.get<never, PageResult<AuditLogVO>>('/v1/audit-logs', { params }),
+}
+
+export const loginLogApi = {
+  page: (params: {
+    page?: number
+    size?: number
+    username?: string
+    result?: number
+    startDate?: string
+    endDate?: string
+  }) => request.get<never, PageResult<LoginLogVO>>('/v1/login-logs', { params }),
 }

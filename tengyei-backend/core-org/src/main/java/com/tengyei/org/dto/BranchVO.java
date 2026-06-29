@@ -4,6 +4,8 @@ import com.tengyei.org.entity.Branch;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
+
 @Getter
 @Builder
 public class BranchVO {
@@ -15,6 +17,10 @@ public class BranchVO {
     private String phone;
     private String city;
     private Integer status;
+    /** 关联的部门ID列表 */
+    private List<Long> deptIds;
+    /** 关联的部门名称列表 */
+    private List<String> deptNames;
 
     public static BranchVO from(Branch b) {
         return BranchVO.builder()

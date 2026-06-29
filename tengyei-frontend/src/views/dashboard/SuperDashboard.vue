@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { dashboardApi } from '@/api/dashboard'
 import type { DashboardStats } from '@/types/dashboard'
 
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(true)
+const router = useRouter()
 
 onMounted(async () => {
   try {
@@ -20,19 +22,19 @@ const statusText = (s: number) => (s === 1 ? '启用' : s === 2 ? '停用' : '�
 <template>
   <div v-loading="loading" class="dashboard">
     <div class="stat-cards">
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/admin/companies')">
         <div class="stat-label">企业总数</div>
         <div class="stat-value">{{ stats?.companyTotal ?? 0 }}</div>
       </el-card>
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/admin/companies')">
         <div class="stat-label">活跃企业</div>
         <div class="stat-value">{{ stats?.companyActive ?? 0 }}</div>
       </el-card>
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/admin/companies')">
         <div class="stat-label">今日新增企业</div>
         <div class="stat-value">{{ stats?.companyTodayNew ?? 0 }}</div>
       </el-card>
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/admin/companies')">
         <div class="stat-label">总用户数</div>
         <div class="stat-value">{{ stats?.userTotal ?? 0 }}</div>
       </el-card>
@@ -62,6 +64,14 @@ const statusText = (s: number) => (s === 1 ? '启用' : s === 2 ? '停用' : '�
 }
 .stat-card {
   border-radius: 10px;
+}
+.stat-card.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.stat-card.clickable:hover {
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.2);
+  transform: translateY(-1px);
 }
 .stat-label {
   color: #6b7280;

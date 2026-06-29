@@ -23,19 +23,22 @@ public class AuditAspect {
 
     @Around("@annotation(auditable)")
     public Object around(ProceedingJoinPoint pjp, Auditable auditable) throws Throwable {
+        String errorMsg = null;
         int result = 1;
         try {
             Object ret = pjp.proceed();
             return ret;
         } catch (Throwable t) {
             result = 0;
+            errorMsg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+            if (errorMsg.length() > 500) errorMsg = errorMsg.substring(0, 500);
             throw t;
         } finally {
-            writeLog(auditable, result);
+            writeLog(auditable, result, errorMsg);
         }
     }
 
-    private void writeLog(Auditable auditable, int result) {
+    private void writeLog(Auditable auditable, int result, String errorMsg) {
         try {
             Long tenantId = TenantContext.getTenantId();
             Long userId = TenantContext.getUserId();
@@ -45,17 +48,22 @@ public class AuditAspect {
             }
 
             String ip = null;
+            String userAgent = null;
             ServletRequestAttributes attrs =
                     (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
             if (attrs != null) {
                 HttpServletRequest req = attrs.getRequest();
                 ip = req.getHeader("X-Forwarded-For");
                 if (ip == null || ip.isBlank()) ip = req.getRemoteAddr();
+                userAgent = req.getHeader("User-Agent");
+                if (userAgent != null && userAgent.length() > 500) {
+                    userAgent = userAgent.substring(0, 500);
+                }
             }
 
             jdbcTemplate.update(
-                "INSERT INTO audit_log (tenant_id, user_id, user_name, module, action_type, description, ip_address, result) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO audit_log (tenant_id, user_id, user_name, module, action_type, description, ip_address, user_agent, result, error_msg) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tenantId != null ? tenantId : 0L,
                 userId != null ? userId : 0L,
                 userName,
@@ -63,7 +71,9 @@ public class AuditAspect {
                 auditable.actionType(),
                 auditable.description(),
                 ip,
-                result);
+                userAgent,
+                result,
+                errorMsg);
         } catch (Exception ex) {
             log.warn("Failed to write audit log: {}", ex.getMessage());
         }

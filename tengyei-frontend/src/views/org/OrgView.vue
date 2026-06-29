@@ -137,6 +137,49 @@ async function toggleBranch(row: BranchVO) {
   fetchBranches()
 }
 
+/* ---------- Branch-Dept association ---------- */
+const deptLinkDialog = ref(false)
+const linkBranchId = ref<number | null>(null)
+const linkBranchName = ref('')
+const checkedDeptIds = ref<number[]>([])
+const deptLinkLoading = ref(false)
+
+/** 扁平化部门树为列表 */
+function flattenTree(nodes: DeptTreeVO[]): { id: number; name: string; indent: string }[] {
+  const result: { id: number; name: string; indent: string }[] = []
+  function walk(list: DeptTreeVO[], level: number) {
+    for (const n of list) {
+      result.push({ id: n.id, name: n.name, indent: '　'.repeat(level) })
+      if (n.children && n.children.length > 0) walk(n.children, level + 1)
+    }
+  }
+  walk(nodes, 0)
+  return result
+}
+
+const flatDepts = ref<{ id: number; name: string; indent: string }[]>([])
+
+function openDeptLink(row: BranchVO) {
+  linkBranchId.value = row.id
+  linkBranchName.value = row.name
+  checkedDeptIds.value = row.deptIds ? [...row.deptIds] : []
+  flatDepts.value = flattenTree(deptTree.value)
+  deptLinkDialog.value = true
+}
+
+async function submitDeptLink() {
+  if (linkBranchId.value == null) return
+  deptLinkLoading.value = true
+  try {
+    await branchApi.linkDepts(linkBranchId.value, checkedDeptIds.value)
+    ElMessage.success('部门关联已更新')
+    deptLinkDialog.value = false
+    fetchBranches()
+  } finally {
+    deptLinkLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchTree()
   fetchBranches()
@@ -176,13 +219,26 @@ onMounted(() => {
       <template #header>
         <div class="pane-head">
           <span>分支机构</span>
-          <el-button type="primary" plain size="small" @click="openBranchCreate">新增分支机构</el-button>
+          <el-button type="primary" size="small" @click="openBranchCreate">新增分支机构</el-button>
         </div>
       </template>
       <el-table v-loading="branchLoading" :data="branches" stripe>
         <el-table-column prop="branchNo" label="机构编号" width="120" />
-        <el-table-column prop="name" label="名称" min-width="160" />
+        <el-table-column prop="name" label="名称" min-width="140" />
         <el-table-column prop="phone" label="联系电话" width="140" />
+        <el-table-column label="关联部门" min-width="160">
+          <template #default="{ row }">
+            <el-tag
+              v-for="(name, idx) in (row as BranchVO).deptNames || []"
+              :key="idx"
+              size="small"
+              style="margin-right: 4px; margin-bottom: 2px"
+            >
+              {{ name }}
+            </el-tag>
+            <span v-if="!(row as BranchVO).deptNames?.length" style="color: #999">未关联</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="(row as BranchVO).status === 1 ? 'success' : 'info'">
@@ -190,8 +246,9 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
+            <el-button link type="primary" @click="openDeptLink(row as BranchVO)">关联部门</el-button>
             <el-button link type="primary" @click="openBranchEdit(row as BranchVO)">编辑</el-button>
             <el-button link type="primary" @click="toggleBranch(row as BranchVO)">
               {{ (row as BranchVO).status === 1 ? '停用' : '启用' }}
@@ -209,6 +266,7 @@ onMounted(() => {
       />
     </el-card>
 
+    <!-- 部门新增/编辑弹窗 -->
     <el-dialog v-model="deptDialog" :title="deptEditingId ? '编辑部门' : '新增部门'" width="420px">
       <el-form ref="deptFormRef" :model="deptForm" :rules="deptRules" label-width="90px">
         <el-form-item label="部门名称" prop="name">
@@ -227,6 +285,7 @@ onMounted(() => {
       </template>
     </el-dialog>
 
+    <!-- 分支机构新增/编辑弹窗 -->
     <el-dialog
       v-model="branchDialog"
       :title="branchEditingId ? '编辑分支机构' : '新增分支机构'"
@@ -255,6 +314,23 @@ onMounted(() => {
       <template #footer>
         <el-button @click="branchDialog = false">取消</el-button>
         <el-button type="primary" @click="submitBranch">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 分公司关联部门弹窗 -->
+    <el-dialog
+      v-model="deptLinkDialog"
+      :title="`关联部门 — ${linkBranchName}`"
+      width="480px"
+    >
+      <el-checkbox-group v-model="checkedDeptIds">
+        <div v-for="d in flatDepts" :key="d.id" style="margin-bottom: 6px">
+          <el-checkbox :value="d.id">{{ d.indent }}{{ d.name }}</el-checkbox>
+        </div>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="deptLinkDialog = false">取消</el-button>
+        <el-button type="primary" :loading="deptLinkLoading" @click="submitDeptLink">保存</el-button>
       </template>
     </el-dialog>
   </div>

@@ -8,22 +8,55 @@ import com.tengyei.org.dto.DeptTreeVO;
 import com.tengyei.org.entity.Dept;
 import com.tengyei.org.mapper.DeptMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class DeptService {
 
     private final DeptMapper deptMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public List<DeptTreeVO> tree() {
+        LambdaQueryWrapper<Dept> qw = new LambdaQueryWrapper<>();
+
+        // 租户隔离：非超管只能看本租户
+        if (!TenantContext.isSuperAdmin()) {
+            qw.eq(Dept::getTenantId, TenantContext.getTenantId());
+        }
+
+        // 数据级权限过滤
+        String scope = TenantContext.getDataScope();
+        final Set<Long> allowedDeptIds;
+        if ("dept".equals(scope)) {
+            Long userDeptId = getUserDeptId();
+            if (userDeptId != null) {
+                allowedDeptIds = collectSubDeptIds(userDeptId);
+            } else {
+                return Collections.emptyList();
+            }
+        } else if ("self".equals(scope)) {
+            Long userDeptId = getUserDeptId();
+            if (userDeptId != null) {
+                allowedDeptIds = Set.of(userDeptId);
+            } else {
+                return Collections.emptyList();
+            }
+        } else {
+            allowedDeptIds = null;
+        }
+
         List<Dept> all = deptMapper.selectList(
-            new LambdaQueryWrapper<Dept>().orderByAsc(Dept::getSortOrder).orderByAsc(Dept::getId));
+            qw.orderByAsc(Dept::getSortOrder).orderByAsc(Dept::getId));
+
+        if (allowedDeptIds != null) {
+            all = all.stream().filter(d -> allowedDeptIds.contains(d.getId())).collect(Collectors.toList());
+        }
+
         Map<Long, DeptTreeVO> map = new LinkedHashMap<>();
         for (Dept d : all) map.put(d.getId(), DeptTreeVO.from(d));
         List<DeptTreeVO> roots = new ArrayList<>();
@@ -37,6 +70,34 @@ public class DeptService {
             }
         }
         return roots;
+    }
+
+    /**
+     * 获取当前用户的部门ID
+     */
+    private Long getUserDeptId() {
+        Long userId = TenantContext.getUserId();
+        if (userId == null) return null;
+        try {
+            return jdbcTemplate.queryForObject(
+                "SELECT dept_id FROM `user` WHERE id = ?", Long.class, userId);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 递归收集部门及其所有子部门ID
+     */
+    private Set<Long> collectSubDeptIds(Long parentId) {
+        Set<Long> ids = new LinkedHashSet<>();
+        ids.add(parentId);
+        List<Dept> children = deptMapper.selectList(
+            new LambdaQueryWrapper<Dept>().eq(Dept::getParentId, parentId));
+        for (Dept child : children) {
+            ids.addAll(collectSubDeptIds(child.getId()));
+        }
+        return ids;
     }
 
     public Long create(DeptSaveDTO dto) {

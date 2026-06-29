@@ -26,7 +26,8 @@ public class SystemConfigController {
     public Result<List<Map<String, Object>>> list() {
         Long tenantId = TenantContext.isSuperAdmin() ? 0L : TenantContext.getTenantId();
         return Result.ok(jdbcTemplate.queryForList(
-            "SELECT id, config_key, config_value, description FROM system_config WHERE tenant_id = ? ORDER BY config_key",
+            "SELECT id, config_key AS configKey, config_value AS configValue, description " +
+            "FROM system_config WHERE tenant_id = ? ORDER BY config_key",
             tenantId));
     }
 

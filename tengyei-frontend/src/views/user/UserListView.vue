@@ -154,7 +154,7 @@ onMounted(() => {
         <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
       </el-select>
       <el-button type="primary" @click="onSearch">搜索</el-button>
-      <el-button type="primary" plain @click="openCreate">新增用户</el-button>
+      <el-button type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" stripe>

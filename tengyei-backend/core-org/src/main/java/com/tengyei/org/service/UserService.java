@@ -8,7 +8,9 @@ import com.tengyei.common.response.PageResult;
 import com.tengyei.org.dto.UserCreateDTO;
 import com.tengyei.org.dto.UserUpdateDTO;
 import com.tengyei.org.dto.UserVO;
+import com.tengyei.org.entity.Dept;
 import com.tengyei.org.entity.User;
+import com.tengyei.org.mapper.DeptMapper;
 import com.tengyei.org.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,19 +20,45 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
     private final UserMapper userMapper;
+    private final DeptMapper deptMapper;
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
 
     public PageResult<UserVO> page(long page, long size, String keyword, Long deptId, Long roleId) {
         LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
         qw.eq(User::getIsSuperAdmin, 0);
+
+        // 租户隔离：非超管只能看本租户
+        if (!TenantContext.isSuperAdmin()) {
+            qw.eq(User::getTenantId, TenantContext.getTenantId());
+        }
+
+        // 数据级权限过滤
+        String scope = TenantContext.getDataScope();
+        if ("branch".equals(scope)) {
+            Long branchId = TenantContext.getBranchId();
+            if (branchId != null) {
+                qw.eq(User::getBranchId, branchId);
+            }
+        } else if ("dept".equals(scope)) {
+            Long userDeptId = getUserDeptId();
+            if (userDeptId != null) {
+                Set<Long> deptIds = collectSubDeptIds(userDeptId);
+                qw.in(User::getDeptId, deptIds);
+            }
+        } else if ("self".equals(scope)) {
+            qw.eq(User::getId, TenantContext.getUserId());
+        }
+
         if (StringUtils.hasText(keyword)) {
             qw.and(w -> w.like(User::getUsername, keyword)
                     .or().like(User::getRealName, keyword)
@@ -135,5 +163,29 @@ public class UserService {
         User u = userMapper.selectById(id);
         if (u == null) throw new BusinessException(404, "用户不存在");
         return u;
+    }
+
+    /**
+     * 获取当前用户的部门ID
+     */
+    private Long getUserDeptId() {
+        Long userId = TenantContext.getUserId();
+        if (userId == null) return null;
+        User u = userMapper.selectById(userId);
+        return u != null ? u.getDeptId() : null;
+    }
+
+    /**
+     * 递归收集部门及其所有子部门ID
+     */
+    private Set<Long> collectSubDeptIds(Long parentId) {
+        Set<Long> ids = new LinkedHashSet<>();
+        ids.add(parentId);
+        List<Dept> children = deptMapper.selectList(
+            new LambdaQueryWrapper<Dept>().eq(Dept::getParentId, parentId));
+        for (Dept child : children) {
+            ids.addAll(collectSubDeptIds(child.getId()));
+        }
+        return ids;
     }
 }

@@ -33,19 +33,19 @@ const shortcuts: Shortcut[] = [
 <template>
   <div v-loading="loading" class="dashboard">
     <div class="stat-cards">
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/company/org')">
         <div class="stat-label">部门数</div>
         <div class="stat-value">{{ stats?.deptCount ?? 0 }}</div>
       </el-card>
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/company/org')">
         <div class="stat-label">分支机构</div>
         <div class="stat-value">{{ stats?.branchCount ?? 0 }}</div>
       </el-card>
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/company/users')">
         <div class="stat-label">人员总数</div>
         <div class="stat-value">{{ stats?.userCount ?? 0 }}</div>
       </el-card>
-      <el-card class="stat-card" shadow="never">
+      <el-card class="stat-card clickable" shadow="never" @click="router.push('/company/users')">
         <div class="stat-label">今日登录</div>
         <div class="stat-value">{{ stats?.todayLoginCount ?? 0 }}</div>
       </el-card>
@@ -77,6 +77,14 @@ const shortcuts: Shortcut[] = [
 }
 .stat-card {
   border-radius: 10px;
+}
+.stat-card.clickable {
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.stat-card.clickable:hover {
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.2);
+  transform: translateY(-1px);
 }
 .stat-label {
   color: #6b7280;

@@ -96,7 +96,7 @@ onMounted(fetchList)
         @clear="onSearch"
       />
       <el-button type="primary" @click="onSearch">搜索</el-button>
-      <el-button type="primary" plain @click="openCreate">新增企业</el-button>
+      <el-button type="primary" @click="openCreate">新增企业</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" stripe>

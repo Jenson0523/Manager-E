@@ -27,7 +27,8 @@ public class DashboardService {
             data.put("userTotal", count(
                 "SELECT COUNT(*) FROM user WHERE is_deleted = 0 AND is_super_admin = 0"));
             List<Map<String, Object>> recent = jdbcTemplate.queryForList(
-                "SELECT id, company_no, full_name, short_name, status, created_at " +
+                "SELECT id, company_no AS companyNo, full_name AS fullName, short_name AS shortName, " +
+                "status, created_at AS createdAt " +
                 "FROM company WHERE is_deleted = 0 ORDER BY id DESC LIMIT 5");
             data.put("recentCompanies", recent);
         } else {

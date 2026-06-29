@@ -16,4 +16,13 @@ export const branchApi = {
   update: (id: number, data: BranchSaveDTO) => request.put<never, void>(`/v1/branches/${id}`, data),
   changeStatus: (id: number, status: number) =>
     request.put<never, void>(`/v1/branches/${id}/status`, { status }),
+  /** 获取分公司关联的部门ID列表 */
+  getDepts: (branchId: number) =>
+    request.get<never, number[]>(`/v1/branches/${branchId}/depts`),
+  /** 批量关联部门到分公司 */
+  linkDepts: (branchId: number, deptIds: number[]) =>
+    request.post<never, void>(`/v1/branches/${branchId}/depts`, { deptIds }),
+  /** 解除分公司与部门的关联 */
+  unlinkDept: (branchId: number, deptId: number) =>
+    request.delete<never, void>(`/v1/branches/${branchId}/depts/${deptId}`),
 }

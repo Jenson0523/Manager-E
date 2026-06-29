@@ -15,9 +15,9 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/audit-logs")
+@RequestMapping("/api/v1/login-logs")
 @RequiredArgsConstructor
-public class AuditLogController {
+public class LoginLogController {
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -26,7 +26,8 @@ public class AuditLogController {
     public Result<PageResult<Map<String, Object>>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String module,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) Integer result,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
@@ -40,9 +41,13 @@ public class AuditLogController {
             where.append(" AND tenant_id = ?");
             params.add(tenantId);
         }
-        if (module != null && !module.isBlank()) {
-            where.append(" AND module = ?");
-            params.add(module);
+        if (username != null && !username.isBlank()) {
+            where.append(" AND username LIKE ?");
+            params.add("%" + username + "%");
+        }
+        if (result != null) {
+            where.append(" AND result = ?");
+            params.add(result);
         }
         if (startDate != null) {
             where.append(" AND created_at >= ?");
@@ -54,16 +59,16 @@ public class AuditLogController {
         }
 
         long total = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM audit_log " + where, Long.class, params.toArray());
+            "SELECT COUNT(*) FROM login_log " + where, Long.class, params.toArray());
 
         List<Object> pageParams = new ArrayList<>(params);
         pageParams.add(size);
         pageParams.add((long) (page - 1) * size);
         List<Map<String, Object>> records = jdbcTemplate.queryForList(
-            "SELECT id, tenant_id AS tenantId, user_id AS userId, user_name AS userName, " +
-            "module, action_type AS actionType, description, ip_address AS ipAddress, " +
-            "result, created_at AS createdAt" +
-            " FROM audit_log " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT id, tenant_id AS tenantId, user_id AS userId, username, " +
+            "login_type AS loginType, ip_address AS ipAddress, " +
+            "result, fail_reason AS failReason, created_at AS createdAt" +
+            " FROM login_log " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
             pageParams.toArray());
 
         return Result.ok(PageResult.of(records, total, page, size));
