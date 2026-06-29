@@ -88,8 +88,9 @@ function onLoginReset() {
   fetchLoginList()
 }
 
-function handleTabChange(tab: string) {
-  if (tab === 'login' && loginList.value.length === 0) {
+function handleTabChange(tab: string | number) {
+  const name = String(tab)
+  if (name === 'login' && loginList.value.length === 0) {
     fetchLoginList()
   }
 }
