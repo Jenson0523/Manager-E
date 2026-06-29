@@ -2,7 +2,10 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { deptApi, branchApi } from '@/api/org'
+import { useAuthStore } from '@/stores/auth'
 import type { DeptTreeVO, DeptSaveDTO, BranchVO, BranchSaveDTO } from '@/types/org'
+
+const auth = useAuthStore()
 
 /* ---------- Department tree ---------- */
 const treeLoading = ref(false)
@@ -180,6 +183,13 @@ async function submitDeptLink() {
   }
 }
 
+async function removeBranch(row: BranchVO) {
+  await ElMessageBox.confirm(`确认删除分公司「${row.name}」？关联部门数据将同步清除。`, '提示', { type: 'warning' })
+  await branchApi.remove(row.id)
+  ElMessage.success('已删除')
+  fetchBranches()
+}
+
 onMounted(() => {
   fetchTree()
   fetchBranches()
@@ -192,7 +202,7 @@ onMounted(() => {
       <template #header>
         <div class="pane-head">
           <span>部门</span>
-          <el-button link type="primary" @click="openDeptCreate()">新增根部门</el-button>
+          <el-button v-if="auth.hasPermission('PERM_dept:create')" link type="primary" @click="openDeptCreate()">新增根部门</el-button>
         </div>
       </template>
       <el-tree
@@ -206,9 +216,9 @@ onMounted(() => {
           <span class="tree-node">
             <span>{{ data.name }}</span>
             <span class="tree-actions">
-              <el-button link type="primary" @click.stop="openDeptCreate(data)">增</el-button>
-              <el-button link type="primary" @click.stop="openDeptEdit(data)">改</el-button>
-              <el-button link type="danger" @click.stop="removeDept(data)">删</el-button>
+              <el-button v-if="auth.hasPermission('PERM_dept:create')" link type="primary" @click.stop="openDeptCreate(data)">增</el-button>
+              <el-button v-if="auth.hasPermission('PERM_dept:edit')" link type="primary" @click.stop="openDeptEdit(data)">改</el-button>
+              <el-button v-if="auth.hasPermission('PERM_dept:delete')" link type="danger" @click.stop="removeDept(data)">删</el-button>
             </span>
           </span>
         </template>
@@ -219,7 +229,7 @@ onMounted(() => {
       <template #header>
         <div class="pane-head">
           <span>分支机构</span>
-          <el-button type="primary" size="small" @click="openBranchCreate">新增分支机构</el-button>
+          <el-button v-if="auth.hasPermission('PERM_branch:create')" type="primary" size="small" @click="openBranchCreate">新增分支机构</el-button>
         </div>
       </template>
       <el-table v-loading="branchLoading" :data="branches" stripe>
@@ -246,13 +256,14 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDeptLink(row as BranchVO)">关联部门</el-button>
-            <el-button link type="primary" @click="openBranchEdit(row as BranchVO)">编辑</el-button>
-            <el-button link type="primary" @click="toggleBranch(row as BranchVO)">
+            <el-button v-if="auth.hasPermission('PERM_branch:edit')" link type="primary" @click="openDeptLink(row as BranchVO)">关联部门</el-button>
+            <el-button v-if="auth.hasPermission('PERM_branch:edit')" link type="primary" @click="openBranchEdit(row as BranchVO)">编辑</el-button>
+            <el-button v-if="auth.hasPermission('PERM_branch:edit')" link type="primary" @click="toggleBranch(row as BranchVO)">
               {{ (row as BranchVO).status === 1 ? '停用' : '启用' }}
             </el-button>
+            <el-button v-if="auth.hasPermission('PERM_branch:delete')" link type="danger" @click="removeBranch(row as BranchVO)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

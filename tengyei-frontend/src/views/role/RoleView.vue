@@ -2,7 +2,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type CheckboxValueType } from 'element-plus'
 import { roleApi, permissionApi } from '@/api/rbac'
+import { useAuthStore } from '@/stores/auth'
 import type { RoleVO, RoleSaveDTO, PermissionGroupVO } from '@/types/rbac'
+
+const auth = useAuthStore()
 
 /* ---------- Role list ---------- */
 const roles = ref<RoleVO[]>([])
@@ -142,7 +145,7 @@ onMounted(() => {
       <template #header>
         <div class="pane-head">
           <span>角色列表</span>
-          <el-button link type="primary" @click="openCreate">新增角色</el-button>
+          <el-button v-if="auth.hasPermission('PERM_role:create')" link type="primary" @click="openCreate">新增角色</el-button>
         </div>
       </template>
       <div
@@ -154,9 +157,9 @@ onMounted(() => {
         <div class="role-name">{{ role.name }}</div>
         <div class="role-meta">{{ role.code }}</div>
         <div class="role-actions">
-          <el-button link type="primary" size="small" @click.stop="openEdit(role)">编辑</el-button>
+          <el-button v-if="auth.hasPermission('PERM_role:edit')" link type="primary" size="small" @click.stop="openEdit(role)">编辑</el-button>
           <el-button
-            v-if="!role.isPreset"
+            v-if="!role.isPreset && auth.hasPermission('PERM_role:delete')"
             link
             type="danger"
             size="small"
@@ -171,6 +174,7 @@ onMounted(() => {
         <div class="pane-head">
           <span>权限配置{{ activeRole ? ` — ${activeRole.name}` : '' }}</span>
           <el-button
+            v-if="auth.hasPermission('PERM_role:edit')"
             type="primary"
             size="small"
             :disabled="noActiveRole"
@@ -197,7 +201,7 @@ onMounted(() => {
             <el-checkbox
               v-for="perm in group.permissions"
               :key="perm.id"
-              :label="perm.id"
+              :value="perm.id"
             >{{ perm.name }}</el-checkbox>
           </el-checkbox-group>
         </div>
