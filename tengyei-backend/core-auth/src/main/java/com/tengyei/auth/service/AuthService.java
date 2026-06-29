@@ -42,11 +42,12 @@ public class AuthService {
             "SELECT id, tenant_id, username, password, real_name, " +
             "is_super_admin, status, pwd_reset_required, " +
             "login_fail_count, locked_until, branch_id " +
-            "FROM user WHERE username = ? AND is_deleted = 0",
+            "FROM `user` WHERE username = ? AND is_deleted = 0",
             req.getUsername()
         );
 
         if (rows.isEmpty()) {
+            writeLoginLog(0L, 0L, req.getUsername(), clientIp, 0, "用户名不存在");
             throw new BusinessException(401, "用户名或密码错误");
         }
 
@@ -65,11 +66,13 @@ public class AuthService {
             LocalDateTime lockedUntil = lockedUntilObj instanceof LocalDateTime ldt
                     ? ldt : LocalDateTime.parse(lockedUntilObj.toString().replace(" ", "T"));
             if (LocalDateTime.now().isBefore(lockedUntil)) {
+                writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 0, "账号已锁定");
                 throw new BusinessException(423, "账号已锁定，请 " + LOCK_MINUTES + " 分钟后重试");
             }
         }
 
         if (status == 0) {
+            writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 0, "账号已停用");
             throw new BusinessException(423, "账号已停用，请联系管理员");
         }
 
@@ -77,12 +80,14 @@ public class AuthService {
             int newFailCount = failCount + 1;
             if (newFailCount >= MAX_FAIL_COUNT) {
                 jdbcTemplate.update(
-                    "UPDATE user SET login_fail_count = ?, locked_until = ? WHERE id = ?",
+                    "UPDATE `user` SET login_fail_count = ?, locked_until = ? WHERE id = ?",
                     newFailCount, LocalDateTime.now().plusMinutes(LOCK_MINUTES), userId
                 );
+                writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 0, "密码错误次数过多，账号已锁定");
                 throw new BusinessException(423, "密码错误次数过多，账号已锁定 " + LOCK_MINUTES + " 分钟");
             }
-            jdbcTemplate.update("UPDATE user SET login_fail_count = ? WHERE id = ?", newFailCount, userId);
+            jdbcTemplate.update("UPDATE `user` SET login_fail_count = ? WHERE id = ?", newFailCount, userId);
+            writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 0, "密码错误");
             throw new BusinessException(401, "用户名或密码错误，还可尝试 " + (MAX_FAIL_COUNT - newFailCount) + " 次");
         }
 
@@ -92,13 +97,14 @@ public class AuthService {
                 "SELECT status FROM company WHERE id = ? AND is_deleted = 0", tenantId
             );
             if (companyRows.isEmpty() || toInt(companyRows.get(0).get("status")) != 1) {
+                writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 0, "所属企业已停用");
                 throw new BusinessException(423, "所属企业已停用，请联系平台管理员");
             }
         }
 
         // Reset fail count, update last login
         jdbcTemplate.update(
-            "UPDATE user SET login_fail_count = 0, locked_until = NULL, " +
+            "UPDATE `user` SET login_fail_count = 0, locked_until = NULL, " +
             "last_login_at = NOW(), last_login_ip = ? WHERE id = ?",
             clientIp, userId
         );
@@ -135,6 +141,7 @@ public class AuthService {
         }
 
         String token = jwtService.generate(tenantId, userId, branchId, roleCodes, permissions, dataScope);
+        writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 1, null);
 
         return LoginResponse.builder()
                 .accessToken(token)
@@ -143,6 +150,19 @@ public class AuthService {
                 .realName((String) row.get("real_name"))
                 .tenantId(tenantId)
                 .build();
+    }
+
+    private void writeLoginLog(Long userId, Long tenantId, String username, String ip, int result, String failReason) {
+        try {
+            jdbcTemplate.update(
+                "INSERT INTO login_log (tenant_id, user_id, username, login_type, ip_address, result, fail_reason) " +
+                "VALUES (?, ?, ?, 'login', ?, ?, ?)",
+                tenantId != null ? tenantId : 0L,
+                userId != null ? userId : 0L,
+                username, ip, result, failReason);
+        } catch (Exception ex) {
+            log.warn("Failed to write login log: {}", ex.getMessage());
+        }
     }
 
     public void logout(String token) {

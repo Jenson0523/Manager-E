@@ -29,6 +29,7 @@ export interface UserInfo {
   roleCodes: string[]
   permissions: string[]
   routes: RouteVO[]
+  pwdResetRequired: boolean
 }
 
 export interface ApiResult<T = unknown> {

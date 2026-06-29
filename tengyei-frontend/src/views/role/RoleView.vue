@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type CheckboxValueType } from 'element-plus'
 import { roleApi, permissionApi } from '@/api/rbac'
 import type { RoleVO, RoleSaveDTO, PermissionGroupVO } from '@/types/rbac'
 
@@ -188,19 +188,18 @@ onMounted(() => {
             <el-checkbox
               :model-value="groupChecked(group)"
               :indeterminate="groupIndeterminate(group)"
-              @change="(v: boolean) => toggleGroup(group, v)"
+              @change="(v: CheckboxValueType) => toggleGroup(group, v as boolean)"
             >
               <strong>{{ group.module }}</strong>
             </el-checkbox>
           </div>
-          <div class="perm-items">
+          <el-checkbox-group v-model="checkedIds" class="perm-items">
             <el-checkbox
               v-for="perm in group.permissions"
               :key="perm.id"
-              v-model="checkedIds"
               :label="perm.id"
             >{{ perm.name }}</el-checkbox>
-          </div>
+          </el-checkbox-group>
         </div>
       </div>
     </el-card>

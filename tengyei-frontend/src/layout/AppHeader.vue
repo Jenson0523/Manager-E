@@ -14,7 +14,8 @@ const currentTitle = computed(() => (route.meta.title as string) || '工作台')
 const realName = computed(() => auth.userInfo?.realName ?? '用户')
 
 function onCommand(command: string) {
-  if (command === 'logout') handleLogout()
+  if (command === 'profile') router.push('/profile')
+  else if (command === 'logout') handleLogout()
 }
 
 async function handleLogout() {
@@ -46,7 +47,8 @@ async function handleLogout() {
       </span>
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+          <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+          <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>

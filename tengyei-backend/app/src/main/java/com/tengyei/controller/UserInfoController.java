@@ -31,13 +31,14 @@ public class UserInfoController {
         String dataScope = TenantContext.getDataScope();
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-            "SELECT username, real_name, avatar_url, is_super_admin FROM user WHERE id = ? AND is_deleted = 0",
+            "SELECT username, real_name, avatar_url, is_super_admin, pwd_reset_required FROM `user` WHERE id = ? AND is_deleted = 0",
             userId
         );
         if (rows.isEmpty()) throw new BusinessException(401, "用户不存在");
         Map<String, Object> row = rows.get(0);
 
         boolean isSuperAdmin = toInt(row.get("is_super_admin")) == 1;
+        boolean pwdResetRequired = toInt(row.get("pwd_reset_required")) == 1;
         List<String> permissions = jwtService.getPermissions(token);
         List<String> roleCodes = jdbcTemplate.queryForList(
             "SELECT r.code FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
@@ -59,13 +60,16 @@ public class UserInfoController {
                 .roleCodes(roleCodes)
                 .permissions(permissions)
                 .routes(routes)
+                .pwdResetRequired(pwdResetRequired)
                 .build());
     }
 
     private List<UserInfoVO.RouteVO> buildSuperAdminRoutes() {
         return List.of(
             route("/dashboard", "工作台"),
-            route("/admin/companies", "企业管理")
+            route("/admin/companies", "企业管理"),
+            route("/admin/audit-logs", "操作日志"),
+            route("/admin/system-config", "系统设置")
         );
     }
 

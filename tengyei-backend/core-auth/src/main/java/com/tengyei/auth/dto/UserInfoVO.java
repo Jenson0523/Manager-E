@@ -19,6 +19,7 @@ public class UserInfoVO {
     private List<String> roleCodes;
     private List<String> permissions;
     private List<RouteVO> routes;
+    private Boolean pwdResetRequired;
 
     @Data
     @Builder

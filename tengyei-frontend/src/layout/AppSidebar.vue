@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { HomeFilled, OfficeBuilding, Share, User, Lock } from '@element-plus/icons-vue'
+import { HomeFilled, OfficeBuilding, Share, User, Lock, Document, Setting } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 
 const auth = useAuthStore()
@@ -12,6 +12,8 @@ const router = useRouter()
 const iconMap: Record<string, Component> = {
   '/dashboard': HomeFilled,
   '/admin/companies': OfficeBuilding,
+  '/admin/audit-logs': Document,
+  '/admin/system-config': Setting,
   '/company/org': Share,
   '/company/users': User,
   '/company/roles': Lock,

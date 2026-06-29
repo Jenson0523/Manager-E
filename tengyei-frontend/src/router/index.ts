@@ -11,6 +11,12 @@ const router = createRouter({
       meta: { guestOnly: true },
     },
     {
+      path: '/reset-password',
+      name: 'ResetPassword',
+      component: () => import('@/views/auth/ResetPasswordView.vue'),
+      meta: { requiresAuth: true, skipPwdCheck: true },
+    },
+    {
       path: '/',
       component: () => import('@/layout/MainLayout.vue'),
       meta: { requiresAuth: true },
@@ -23,10 +29,28 @@ const router = createRouter({
           meta: { title: '工作台' },
         },
         {
+          path: 'profile',
+          name: 'Profile',
+          component: () => import('@/views/profile/ProfileView.vue'),
+          meta: { title: '个人中心' },
+        },
+        {
           path: 'admin/companies',
           name: 'Companies',
           component: () => import('@/views/company/CompanyListView.vue'),
           meta: { title: '企业管理' },
+        },
+        {
+          path: 'admin/audit-logs',
+          name: 'AuditLogs',
+          component: () => import('@/views/audit/AuditLogView.vue'),
+          meta: { title: '操作日志' },
+        },
+        {
+          path: 'admin/system-config',
+          name: 'SystemConfig',
+          component: () => import('@/views/config/SystemConfigView.vue'),
+          meta: { title: '系统设置' },
         },
         {
           path: 'company/org',
@@ -64,6 +88,10 @@ router.beforeEach(async (to) => {
       await auth.logout()
       return '/login'
     }
+  }
+  // Force password change if required
+  if (auth.userInfo?.pwdResetRequired && !to.meta.skipPwdCheck) {
+    return '/reset-password'
   }
   return true
 })

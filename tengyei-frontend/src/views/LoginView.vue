@@ -123,7 +123,7 @@ async function handleLogin() {
   try {
     const result = await auth.login({ username: form.username, password: form.password })
     if (result.pwdResetRequired) {
-      errorMsg.value = '请修改初始密码后继续'
+      router.push('/reset-password')
       return
     }
     router.push('/dashboard')
