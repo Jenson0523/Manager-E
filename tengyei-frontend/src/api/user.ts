@@ -1,6 +1,7 @@
 import request from './request'
 import type { PageResult, IdResult } from '@/types/common'
 import type { UserVO, UserCreateDTO, UserUpdateDTO } from '@/types/user'
+import { downloadExcel } from '@/utils/download'
 
 export const userApi = {
   page: (params: {
@@ -18,4 +19,17 @@ export const userApi = {
     request.put<never, void>(`/v1/users/${id}/roles`, { roleIds }),
   resetPassword: (id: number, password: string) =>
     request.put<never, void>(`/v1/users/${id}/reset-password`, { password }),
+
+  export: (params: { keyword?: string; deptId?: number }) =>
+    downloadExcel(
+      '/v1/users/export',
+      params as Record<string, unknown>,
+      `人员列表_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '')}.xlsx`
+    ),
+
+  batchStatus: (ids: number[], status: number) =>
+    request.put<never, void>('/v1/users/batch/status', { ids, status }),
+
+  batchRoles: (ids: number[], roleIds: number[]) =>
+    request.put<never, void>('/v1/users/batch/roles', { ids, roleIds }),
 }
