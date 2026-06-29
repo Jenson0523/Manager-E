@@ -64,21 +64,17 @@ public class UserInfoController {
 
     private List<UserInfoVO.RouteVO> buildSuperAdminRoutes() {
         return List.of(
-            route("/admin/dashboard", "系统概览"),
-            route("/admin/companies", "企业管理"),
-            route("/admin/audit-log", "审计日志"),
-            route("/admin/settings", "系统设置")
+            route("/dashboard", "工作台"),
+            route("/admin/companies", "企业管理")
         );
     }
 
     private List<UserInfoVO.RouteVO> buildCompanyRoutes(List<String> permissions) {
         List<UserInfoVO.RouteVO> routes = new ArrayList<>();
-        routes.add(route("/company/dashboard", "工作台"));
+        routes.add(route("/dashboard", "工作台"));
         if (hasAny(permissions, "dept:view", "branch:view")) routes.add(route("/company/org", "组织管理"));
         if (hasAny(permissions, "user:view")) routes.add(route("/company/users", "人员管理"));
         if (hasAny(permissions, "role:view")) routes.add(route("/company/roles", "角色与权限"));
-        if (hasAny(permissions, "log:view")) routes.add(route("/company/audit-log", "审计日志"));
-        if (hasAny(permissions, "setting:view")) routes.add(route("/company/settings", "公司设置"));
         return routes;
     }
 
