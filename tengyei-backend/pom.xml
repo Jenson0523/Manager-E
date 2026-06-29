@@ -29,6 +29,7 @@
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <jjwt.version>0.12.5</jjwt.version>
         <flyway.version>9.22.3</flyway.version>
+        <easyexcel.version>3.3.4</easyexcel.version>
     </properties>
 
     <build>
@@ -103,6 +104,11 @@
                 <groupId>com.tengyei</groupId>
                 <artifactId>audit</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>easyexcel</artifactId>
+                <version>${easyexcel.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.flywaydb</groupId>
