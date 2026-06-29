@@ -11,4 +11,5 @@ export const companyApi = {
     request.put<never, void>(`/v1/companies/${id}`, data),
   changeStatus: (id: number, status: number) =>
     request.put<never, void>(`/v1/companies/${id}/status`, { status }),
+  delete: (id: number) => request.delete<never, void>(`/v1/companies/${id}`),
 }

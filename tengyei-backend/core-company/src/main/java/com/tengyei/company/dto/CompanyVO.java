@@ -13,8 +13,11 @@ public class CompanyVO {
     private String companyNo;
     private String fullName;
     private String shortName;
+    private String creditCode;
     private String adminName;
     private String adminPhone;
+    private String adminEmail;
+    private String remark;
     private Integer status;
     private LocalDateTime createdAt;
 
@@ -24,8 +27,11 @@ public class CompanyVO {
                 .companyNo(c.getCompanyNo())
                 .fullName(c.getFullName())
                 .shortName(c.getShortName())
+                .creditCode(c.getCreditCode())
                 .adminName(c.getAdminName())
                 .adminPhone(c.getAdminPhone())
+                .adminEmail(c.getAdminEmail())
+                .remark(c.getRemark())
                 .status(c.getStatus())
                 .createdAt(c.getCreatedAt())
                 .build();

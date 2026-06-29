@@ -24,12 +24,12 @@ public class LoginLogController {
     @GetMapping
     @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view')")
     public Result<PageResult<Map<String, Object>>> list(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String username,
-            @RequestParam(required = false) Integer result,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "username", required = false) String username,
+            @RequestParam(name = "result", required = false) Integer result,
+            @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
         boolean isSuperAdmin = TenantContext.isSuperAdmin();
         Long tenantId = TenantContext.getTenantId();

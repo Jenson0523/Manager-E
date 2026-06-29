@@ -24,11 +24,11 @@ public class AuditLogController {
     @GetMapping
     @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view')")
     public Result<PageResult<Map<String, Object>>> list(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String module,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "module", required = false) String module,
+            @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
         boolean isSuperAdmin = TenantContext.isSuperAdmin();
         Long tenantId = TenantContext.getTenantId();
@@ -62,7 +62,7 @@ public class AuditLogController {
         List<Map<String, Object>> records = jdbcTemplate.queryForList(
             "SELECT id, tenant_id AS tenantId, user_id AS userId, user_name AS userName, " +
             "module, action_type AS actionType, description, ip_address AS ipAddress, " +
-            "result, created_at AS createdAt" +
+            "user_agent AS userAgent, result, error_msg AS errorMsg, created_at AS createdAt" +
             " FROM audit_log " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
             pageParams.toArray());
 

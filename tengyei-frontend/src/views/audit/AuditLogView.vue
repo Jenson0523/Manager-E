@@ -141,6 +141,12 @@ function handleTabChange(tab: string | number) {
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column prop="errorMsg" label="错误信息" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="(row as AuditLogVO).errorMsg" style="color: #f56c6c">{{ (row as AuditLogVO).errorMsg }}</span>
+              <span v-else style="color: #999">-</span>
+            </template>
+          </el-table-column>
         </el-table>
 
         <el-pagination

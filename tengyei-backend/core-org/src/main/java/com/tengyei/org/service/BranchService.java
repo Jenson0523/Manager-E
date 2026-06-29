@@ -102,14 +102,13 @@ public class BranchService {
         if (branch == null) throw new BusinessException(404, "分支机构不存在");
         Long tenantId = TenantContext.getTenantId();
 
-        for (Long deptId : deptIds) {
-            // 检查是否已关联
-            Long count = branchDeptMapper.selectCount(
-                new LambdaQueryWrapper<BranchDept>()
-                    .eq(BranchDept::getBranchId, branchId)
-                    .eq(BranchDept::getDeptId, deptId));
-            if (count != null && count > 0) continue;
+        // 先清空该分公司原有的全部部门关联，再重新插入选中的
+        branchDeptMapper.delete(
+            new LambdaQueryWrapper<BranchDept>().eq(BranchDept::getBranchId, branchId));
 
+        if (deptIds == null || deptIds.isEmpty()) return;
+
+        for (Long deptId : deptIds) {
             BranchDept bd = new BranchDept();
             bd.setTenantId(tenantId);
             bd.setBranchId(branchId);

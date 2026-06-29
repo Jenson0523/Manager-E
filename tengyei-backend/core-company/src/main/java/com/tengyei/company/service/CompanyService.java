@@ -113,4 +113,12 @@ public class CompanyService {
         c.setStatus(status);
         companyMapper.updateById(c);
     }
+
+    public void delete(Long id) {
+        Company c = companyMapper.selectById(id);
+        if (c == null) throw new BusinessException(404, "企业不存在");
+        if (c.getStatus() == 1) throw new BusinessException(422, "请先停用企业再删除");
+        // 逻辑删除
+        companyMapper.deleteById(id);
+    }
 }

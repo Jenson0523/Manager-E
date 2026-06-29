@@ -59,4 +59,12 @@ public class CompanyController {
         companyService.changeStatus(id, body.get("status"));
         return Result.ok();
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERM_*')")
+    @Auditable(module = "企业管理", actionType = "DELETE", description = "删除企业")
+    public Result<Void> delete(@PathVariable("id") Long id) {
+        companyService.delete(id);
+        return Result.ok();
+    }
 }

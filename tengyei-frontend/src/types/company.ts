@@ -3,8 +3,11 @@ export interface CompanyVO {
   companyNo: string
   fullName: string
   shortName: string
+  creditCode?: string
   adminName: string
   adminPhone: string
+  adminEmail?: string
+  remark?: string
   status: number
   createdAt: string
 }

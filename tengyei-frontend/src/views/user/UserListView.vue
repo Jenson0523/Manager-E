@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { userApi } from '@/api/user'
 import { roleApi } from '@/api/rbac'
-import type { UserVO, UserCreateDTO } from '@/types/user'
+import type { UserVO, UserCreateDTO, UserUpdateDTO } from '@/types/user'
 import type { RoleVO } from '@/types/rbac'
 
 const loading = ref(false)
@@ -30,6 +30,22 @@ const createRules: FormRules = {
   realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   phone: [{ required: true, message: '请输入手机号', trigger: 'blur' }],
   password: [{ required: true, min: 6, message: '密码至少 6 位', trigger: 'blur' }],
+}
+
+/* ---- 编辑 ---- */
+const editDialog = ref(false)
+const editFormRef = ref<FormInstance>()
+const editingId = ref<number | null>(null)
+const editForm = reactive<UserUpdateDTO>({
+  realName: '',
+  phone: '',
+  email: '',
+  deptId: undefined,
+  branchId: undefined,
+})
+const editRules: FormRules = {
+  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
+  phone: [{ required: true, message: '请输入手机号', trigger: 'blur' }],
 }
 
 const roleDialog = ref(false)
@@ -113,6 +129,27 @@ async function resetPassword(row: UserVO) {
   }
 }
 
+function openEdit(row: UserVO) {
+  editingId.value = row.id
+  Object.assign(editForm, {
+    realName: row.realName,
+    phone: row.phone,
+    email: row.email ?? '',
+    deptId: row.deptId,
+    branchId: row.branchId,
+  })
+  editDialog.value = true
+}
+
+async function submitEdit() {
+  if (!editFormRef.value || editingId.value == null) return
+  await editFormRef.value.validate()
+  await userApi.update(editingId.value, { ...editForm })
+  ElMessage.success('用户信息已更新')
+  editDialog.value = false
+  fetchList()
+}
+
 function openRoleAssign(row: UserVO) {
   roleTarget.value = row
   selectedRoleIds.value = [...(row.roleIds ?? [])]
@@ -178,8 +215,9 @@ onMounted(() => {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
+          <el-button link type="primary" @click="openEdit(row as UserVO)">编辑</el-button>
           <el-button link type="primary" @click="openRoleAssign(row as UserVO)">分配角色</el-button>
           <el-button link type="primary" @click="resetPassword(row as UserVO)">重置密码</el-button>
           <el-button link type="primary" @click="toggleStatus(row as UserVO)">
@@ -217,13 +255,32 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="角色">
           <el-checkbox-group v-model="createForm.roleIds">
-            <el-checkbox v-for="r in roles" :key="r.id" :label="r.id">{{ r.name }}</el-checkbox>
+            <el-checkbox v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</el-checkbox>
           </el-checkbox-group>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createDialog = false">取消</el-button>
         <el-button type="primary" @click="submitCreate">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑对话框 -->
+    <el-dialog v-model="editDialog" title="编辑用户信息" width="480px">
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px">
+        <el-form-item label="姓名" prop="realName">
+          <el-input v-model="editForm.realName" />
+        </el-form-item>
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="editForm.phone" />
+        </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="editForm.email" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
 

@@ -2,16 +2,17 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { companyApi } from '@/api/company'
-import type { CompanyVO, CompanyCreateDTO } from '@/types/company'
+import type { CompanyVO, CompanyCreateDTO, CompanyUpdateDTO } from '@/types/company'
 
 const loading = ref(false)
 const list = ref<CompanyVO[]>([])
 const total = ref(0)
 const query = reactive({ page: 1, size: 20, keyword: '' })
 
-const dialogVisible = ref(false)
-const formRef = ref<FormInstance>()
-const form = reactive<CompanyCreateDTO>({
+/* ---- 新增 ---- */
+const createVisible = ref(false)
+const createFormRef = ref<FormInstance>()
+const createForm = reactive<CompanyCreateDTO>({
   fullName: '',
   shortName: '',
   adminName: '',
@@ -19,13 +20,31 @@ const form = reactive<CompanyCreateDTO>({
   adminUsername: '',
   adminPassword: '',
 })
-const rules: FormRules = {
+const createRules: FormRules = {
   fullName: [{ required: true, message: '请输入企业全称', trigger: 'blur' }],
   shortName: [{ required: true, message: '请输入企业简称', trigger: 'blur' }],
   adminName: [{ required: true, message: '请输入管理员姓名', trigger: 'blur' }],
   adminPhone: [{ required: true, message: '请输入管理员电话', trigger: 'blur' }],
   adminUsername: [{ required: true, message: '请输入管理员账号', trigger: 'blur' }],
   adminPassword: [{ required: true, min: 6, message: '密码至少 6 位', trigger: 'blur' }],
+}
+
+/* ---- 编辑 ---- */
+const editVisible = ref(false)
+const editFormRef = ref<FormInstance>()
+const editingId = ref<number | null>(null)
+const editForm = reactive<CompanyUpdateDTO>({
+  fullName: '',
+  shortName: '',
+  creditCode: '',
+  adminName: '',
+  adminPhone: '',
+  adminEmail: '',
+  remark: '',
+})
+const editRules: FormRules = {
+  fullName: [{ required: true, message: '请输入企业全称', trigger: 'blur' }],
+  shortName: [{ required: true, message: '请输入企业简称', trigger: 'blur' }],
 }
 
 async function fetchList() {
@@ -49,23 +68,42 @@ function onSearch() {
 }
 
 function openCreate() {
-  Object.assign(form, {
-    fullName: '',
-    shortName: '',
-    adminName: '',
-    adminPhone: '',
-    adminUsername: '',
-    adminPassword: '',
+  Object.assign(createForm, {
+    fullName: '', shortName: '', adminName: '',
+    adminPhone: '', adminUsername: '', adminPassword: '',
   })
-  dialogVisible.value = true
+  createVisible.value = true
 }
 
 async function submitCreate() {
-  if (!formRef.value) return
-  await formRef.value.validate()
-  await companyApi.create({ ...form })
+  if (!createFormRef.value) return
+  await createFormRef.value.validate()
+  await companyApi.create({ ...createForm })
   ElMessage.success('企业创建成功')
-  dialogVisible.value = false
+  createVisible.value = false
+  fetchList()
+}
+
+function openEdit(row: CompanyVO) {
+  editingId.value = row.id
+  Object.assign(editForm, {
+    fullName: row.fullName,
+    shortName: row.shortName,
+    creditCode: row.creditCode ?? '',
+    adminName: row.adminName,
+    adminPhone: row.adminPhone,
+    adminEmail: row.adminEmail ?? '',
+    remark: row.remark ?? '',
+  })
+  editVisible.value = true
+}
+
+async function submitEdit() {
+  if (!editFormRef.value || editingId.value == null) return
+  await editFormRef.value.validate()
+  await companyApi.update(editingId.value, { ...editForm })
+  ElMessage.success('企业信息已更新')
+  editVisible.value = false
   fetchList()
 }
 
@@ -75,6 +113,20 @@ async function toggleStatus(row: CompanyVO) {
   await ElMessageBox.confirm(`确认${action}企业「${row.shortName}」？`, '提示', { type: 'warning' })
   await companyApi.changeStatus(row.id, next)
   ElMessage.success(`已${action}`)
+  fetchList()
+}
+
+async function deleteCompany(row: CompanyVO) {
+  if (row.status === 1) {
+    ElMessage.warning('请先停用企业再删除')
+    return
+  }
+  await ElMessageBox.confirm(`确认删除企业「${row.shortName}」？此操作不可恢复！`, '危险操作', {
+    type: 'error',
+    confirmButtonText: '确定删除',
+  })
+  await companyApi.delete(row.id)
+  ElMessage.success('企业已删除')
   fetchList()
 }
 
@@ -110,11 +162,13 @@ onMounted(fetchList)
         </template>
       </el-table-column>
       <el-table-column prop="createdAt" label="创建时间" width="180" />
-      <el-table-column label="操作" width="120" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
+          <el-button link type="primary" @click="openEdit(row as CompanyVO)">编辑</el-button>
           <el-button link type="primary" @click="toggleStatus(row as CompanyVO)">
             {{ (row as CompanyVO).status === 1 ? '停用' : '启用' }}
           </el-button>
+          <el-button link type="danger" @click="deleteCompany(row as CompanyVO)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -128,30 +182,62 @@ onMounted(fetchList)
       @current-change="(p: number) => { query.page = p; fetchList() }"
     />
 
-    <el-dialog v-model="dialogVisible" title="新增企业" width="520px">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
+    <!-- 新增对话框 -->
+    <el-dialog v-model="createVisible" title="新增企业" width="520px">
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="110px">
         <el-form-item label="企业全称" prop="fullName">
-          <el-input v-model="form.fullName" />
+          <el-input v-model="createForm.fullName" />
         </el-form-item>
         <el-form-item label="企业简称" prop="shortName">
-          <el-input v-model="form.shortName" />
+          <el-input v-model="createForm.shortName" />
         </el-form-item>
         <el-form-item label="联系人姓名" prop="adminName">
-          <el-input v-model="form.adminName" />
+          <el-input v-model="createForm.adminName" />
         </el-form-item>
         <el-form-item label="联系电话" prop="adminPhone">
-          <el-input v-model="form.adminPhone" />
+          <el-input v-model="createForm.adminPhone" />
         </el-form-item>
         <el-form-item label="管理员账号" prop="adminUsername">
-          <el-input v-model="form.adminUsername" />
+          <el-input v-model="createForm.adminUsername" />
         </el-form-item>
         <el-form-item label="管理员密码" prop="adminPassword">
-          <el-input v-model="form.adminPassword" type="password" show-password />
+          <el-input v-model="createForm.adminPassword" type="password" show-password />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="createVisible = false">取消</el-button>
         <el-button type="primary" @click="submitCreate">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑对话框 -->
+    <el-dialog v-model="editVisible" title="编辑企业信息" width="520px">
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="110px">
+        <el-form-item label="企业全称" prop="fullName">
+          <el-input v-model="editForm.fullName" />
+        </el-form-item>
+        <el-form-item label="企业简称" prop="shortName">
+          <el-input v-model="editForm.shortName" />
+        </el-form-item>
+        <el-form-item label="统一社会信用代码">
+          <el-input v-model="editForm.creditCode" />
+        </el-form-item>
+        <el-form-item label="联系人姓名">
+          <el-input v-model="editForm.adminName" />
+        </el-form-item>
+        <el-form-item label="联系电话">
+          <el-input v-model="editForm.adminPhone" />
+        </el-form-item>
+        <el-form-item label="联系邮箱">
+          <el-input v-model="editForm.adminEmail" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="editForm.remark" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
   </div>

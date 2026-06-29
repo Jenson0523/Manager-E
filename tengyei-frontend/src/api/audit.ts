@@ -10,7 +10,9 @@ export interface AuditLogVO {
   actionType: string
   description: string
   ipAddress: string
+  userAgent?: string
   result: number
+  errorMsg?: string
   createdAt: string
 }
 
