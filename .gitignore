@@ -6,3 +6,14 @@
 .DS_Store
 Thumbs.db
 *.swp
+
+# Sensitive / local config (never push to GitHub)
+deploy.py
+tengyei-backend/app/src/main/resources/application-prod.yml
+tengyei-backend/app/target/
+tengyei-frontend/node_modules/
+tengyei-frontend/dist/
+*.log
+
+# Maven wrapper
+.tengyei-backend/.mvn/wrapper/maven-wrapper.jar
