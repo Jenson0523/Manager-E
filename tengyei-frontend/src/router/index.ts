@@ -5,57 +5,66 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
-      path: '/',
-      redirect: '/login',
-    },
-    {
       path: '/login',
       name: 'Login',
       component: () => import('@/views/LoginView.vue'),
       meta: { guestOnly: true },
     },
     {
-      path: '/dashboard',
-      name: 'Dashboard',
-      component: () => import('@/views/DashboardView.vue'),
+      path: '/',
+      component: () => import('@/layout/MainLayout.vue'),
       meta: { requiresAuth: true },
+      redirect: '/dashboard',
+      children: [
+        {
+          path: 'dashboard',
+          name: 'Dashboard',
+          component: () => import('@/views/DashboardView.vue'),
+          meta: { title: '工作台' },
+        },
+        {
+          path: 'admin/companies',
+          name: 'Companies',
+          component: () => import('@/views/company/CompanyListView.vue'),
+          meta: { title: '企业管理' },
+        },
+        {
+          path: 'company/org',
+          name: 'Org',
+          component: () => import('@/views/org/OrgView.vue'),
+          meta: { title: '组织管理' },
+        },
+        {
+          path: 'company/users',
+          name: 'Users',
+          component: () => import('@/views/user/UserListView.vue'),
+          meta: { title: '人员管理' },
+        },
+        {
+          path: 'company/roles',
+          name: 'Roles',
+          component: () => import('@/views/role/RoleView.vue'),
+          meta: { title: '角色与权限' },
+        },
+      ],
     },
-    {
-      path: '/403',
-      name: 'Forbidden',
-      component: () => import('@/views/403View.vue'),
-    },
-    {
-      path: '/:pathMatch(.*)*',
-      redirect: '/403',
-    },
+    { path: '/403', name: 'Forbidden', component: () => import('@/views/403View.vue') },
+    { path: '/:pathMatch(.*)*', redirect: '/403' },
   ],
 })
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
-
-  // Guest-only routes (login page): redirect to dashboard if already logged in
-  if (to.meta.guestOnly && auth.isLoggedIn) {
-    return '/dashboard'
-  }
-
-  // Protected routes: redirect to login if not authenticated
-  if (to.meta.requiresAuth && !auth.isLoggedIn) {
-    return '/login'
-  }
-
-  // Authenticated but no userInfo yet: fetch it (page refresh scenario)
+  if (to.meta.guestOnly && auth.isLoggedIn) return '/dashboard'
+  if (to.meta.requiresAuth && !auth.isLoggedIn) return '/login'
   if (auth.isLoggedIn && !auth.userInfo) {
     try {
       await auth.fetchUserInfo()
     } catch {
-      // Token invalid — clear and redirect to login
       await auth.logout()
       return '/login'
     }
   }
-
   return true
 })
 
