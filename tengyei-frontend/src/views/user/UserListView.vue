@@ -78,6 +78,19 @@ const roleDialog = ref(false)
 const roleTarget = ref<UserVO | null>(null)
 const selectedRoleIds = ref<number[]>([])
 
+const exporting = ref(false)
+async function exportList() {
+  exporting.value = true
+  try {
+    await userApi.export({
+      keyword: query.keyword || undefined,
+      deptId: query.deptId,
+    })
+  } finally {
+    exporting.value = false
+  }
+}
+
 async function fetchList() {
   loading.value = true
   try {
@@ -228,6 +241,7 @@ onMounted(() => {
         <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
       </el-select>
       <el-button type="primary" @click="onSearch">搜索</el-button>
+      <el-button :loading="exporting" @click="exportList">导出</el-button>
       <el-button v-if="auth.hasPermission('PERM_user:create')" type="primary" @click="openCreate">新增用户</el-button>
     </div>
 

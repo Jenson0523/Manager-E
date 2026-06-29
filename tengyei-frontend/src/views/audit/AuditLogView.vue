@@ -44,6 +44,35 @@ function onReset() {
   fetchList()
 }
 
+const exporting = ref(false)
+async function exportAudit() {
+  exporting.value = true
+  try {
+    await auditApi.export({
+      module: query.module || undefined,
+      startDate: query.startDate || undefined,
+      endDate: query.endDate || undefined,
+    })
+  } finally {
+    exporting.value = false
+  }
+}
+
+const loginExporting = ref(false)
+async function exportLogin() {
+  loginExporting.value = true
+  try {
+    await loginLogApi.export({
+      username: loginQuery.username || undefined,
+      result: loginQuery.result,
+      startDate: loginQuery.startDate || undefined,
+      endDate: loginQuery.endDate || undefined,
+    })
+  } finally {
+    loginExporting.value = false
+  }
+}
+
 onMounted(fetchList)
 
 /* ---------- 登录日志 ---------- */
@@ -125,6 +154,7 @@ function handleTabChange(tab: string | number) {
           />
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
+          <el-button :loading="exporting" @click="exportAudit">导出</el-button>
         </div>
 
         <el-table v-loading="loading" :data="list" stripe>
@@ -195,6 +225,7 @@ function handleTabChange(tab: string | number) {
           />
           <el-button type="primary" @click="onLoginSearch">查询</el-button>
           <el-button @click="onLoginReset">重置</el-button>
+          <el-button :loading="loginExporting" @click="exportLogin">导出</el-button>
         </div>
 
         <el-table v-loading="loginLoading" :data="loginList" stripe>
