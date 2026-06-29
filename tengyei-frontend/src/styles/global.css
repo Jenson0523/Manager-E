@@ -15,14 +15,14 @@ html, body, #app {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Element Plus overrides */
-.el-button--primary {
+/* Element Plus overrides — only for solid (default) buttons, NOT link/plain */
+.el-button--primary:not(.is-link):not(.is-plain) {
   background: var(--color-primary) !important;
   border-color: var(--color-primary) !important;
   color: #fff !important;
 }
 
-.el-button--primary:hover {
+.el-button--primary:not(.is-link):not(.is-plain):hover {
   background: var(--color-primary-dark) !important;
   border-color: var(--color-primary-dark) !important;
 }
@@ -46,13 +46,33 @@ html, body, #app {
   color: #fff !important;
 }
 
-/* Link buttons: ensure visible primary color */
+/* Link buttons: transparent background, only colored text */
+.el-button--primary.is-link,
+.el-button--danger.is-link,
+.el-button--success.is-link,
+.el-button--warning.is-link,
+.el-button--info.is-link,
+.el-button.is-link {
+  background: transparent !important;
+  border: none !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
 .el-button--primary.is-link {
   color: var(--color-primary) !important;
 }
 
 .el-button--primary.is-link:hover {
   color: var(--color-primary-dark) !important;
+}
+
+.el-button--danger.is-link {
+  color: var(--color-danger) !important;
+}
+
+.el-button--danger.is-link:hover {
+  color: #dc2626 !important;
 }
 
 /* Scrollbar */
