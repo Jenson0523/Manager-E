@@ -70,6 +70,14 @@ public class BranchController {
         return Result.ok();
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('PERM_branch:delete')")
+    @Auditable(module = "分公司管理", actionType = "DELETE", description = "删除分公司")
+    public Result<Void> delete(@PathVariable Long id) {
+        branchService.delete(id);
+        return Result.ok();
+    }
+
     /** 解除分公司与部门的关联 */
     @DeleteMapping("/{branchId}/depts/{deptId}")
     @PreAuthorize("hasAuthority('PERM_branch:edit')")

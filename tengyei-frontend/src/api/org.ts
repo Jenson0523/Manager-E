@@ -16,6 +16,7 @@ export const branchApi = {
   update: (id: number, data: BranchSaveDTO) => request.put<never, void>(`/v1/branches/${id}`, data),
   changeStatus: (id: number, status: number) =>
     request.put<never, void>(`/v1/branches/${id}/status`, { status }),
+  remove: (id: number) => request.delete<never, void>(`/v1/branches/${id}`),
   /** 获取分公司关联的部门ID列表 */
   getDepts: (branchId: number) =>
     request.get<never, number[]>(`/v1/branches/${branchId}/depts`),

@@ -3,13 +3,39 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { userApi } from '@/api/user'
 import { roleApi } from '@/api/rbac'
+import { deptApi } from '@/api/org'
+import { useAuthStore } from '@/stores/auth'
 import type { UserVO, UserCreateDTO, UserUpdateDTO } from '@/types/user'
 import type { RoleVO } from '@/types/rbac'
+import type { DeptTreeVO } from '@/types/org'
+
+const auth = useAuthStore()
 
 const loading = ref(false)
 const list = ref<UserVO[]>([])
 const total = ref(0)
-const query = reactive({ page: 1, size: 20, keyword: '', roleId: undefined as number | undefined })
+const query = reactive({
+  page: 1, size: 20, keyword: '',
+  deptId: undefined as number | undefined,
+  roleId: undefined as number | undefined,
+})
+
+/* 部门扁平列表（用于筛选下拉） */
+const deptOptions = ref<{ id: number; label: string }[]>([])
+
+function flattenDepts(nodes: DeptTreeVO[], level = 0): { id: number; label: string }[] {
+  const result: { id: number; label: string }[] = []
+  for (const n of nodes) {
+    result.push({ id: n.id, label: '　'.repeat(level) + n.name })
+    if (n.children?.length) result.push(...flattenDepts(n.children, level + 1))
+  }
+  return result
+}
+
+async function fetchDepts() {
+  const tree = await deptApi.tree()
+  deptOptions.value = flattenDepts(tree)
+}
 
 const roles = ref<RoleVO[]>([])
 
@@ -59,6 +85,7 @@ async function fetchList() {
       page: query.page,
       size: query.size,
       keyword: query.keyword || undefined,
+      deptId: query.deptId,
       roleId: query.roleId,
     })
     list.value = res.records
@@ -167,6 +194,7 @@ async function saveRoles() {
 onMounted(() => {
   fetchList()
   fetchRoles()
+  fetchDepts()
 })
 </script>
 
@@ -177,21 +205,30 @@ onMounted(() => {
         v-model="query.keyword"
         placeholder="搜索姓名/账号/手机"
         clearable
-        style="width: 220px"
+        style="width: 200px"
         @keyup.enter="onSearch"
         @clear="onSearch"
       />
       <el-select
+        v-model="query.deptId"
+        placeholder="按部门筛选"
+        clearable
+        style="width: 150px"
+        @change="onSearch"
+      >
+        <el-option v-for="d in deptOptions" :key="d.id" :label="d.label" :value="d.id" />
+      </el-select>
+      <el-select
         v-model="query.roleId"
         placeholder="按角色筛选"
         clearable
-        style="width: 160px"
+        style="width: 150px"
         @change="onSearch"
       >
         <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
       </el-select>
       <el-button type="primary" @click="onSearch">搜索</el-button>
-      <el-button type="primary" @click="openCreate">新增用户</el-button>
+      <el-button v-if="auth.hasPermission('PERM_user:create')" type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" stripe>
@@ -217,10 +254,10 @@ onMounted(() => {
       </el-table-column>
       <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row as UserVO)">编辑</el-button>
-          <el-button link type="primary" @click="openRoleAssign(row as UserVO)">分配角色</el-button>
-          <el-button link type="primary" @click="resetPassword(row as UserVO)">重置密码</el-button>
-          <el-button link type="primary" @click="toggleStatus(row as UserVO)">
+          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="openEdit(row as UserVO)">编辑</el-button>
+          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="openRoleAssign(row as UserVO)">分配角色</el-button>
+          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="resetPassword(row as UserVO)">重置密码</el-button>
+          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="toggleStatus(row as UserVO)">
             {{ (row as UserVO).status === 1 ? '停用' : '启用' }}
           </el-button>
         </template>

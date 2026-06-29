@@ -153,6 +153,15 @@ public class BranchService {
         branchMapper.updateById(b);
     }
 
+    @Transactional
+    public void delete(Long id) {
+        Branch b = branchMapper.selectById(id);
+        if (b == null) throw new BusinessException(404, "分支机构不存在");
+        branchDeptMapper.delete(
+            new LambdaQueryWrapper<BranchDept>().eq(BranchDept::getBranchId, id));
+        branchMapper.deleteById(id);
+    }
+
     private void apply(Branch b, BranchSaveDTO dto) {
         b.setBranchNo(dto.getBranchNo());
         b.setName(dto.getName());
