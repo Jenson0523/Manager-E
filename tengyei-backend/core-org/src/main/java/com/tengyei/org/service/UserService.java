@@ -204,6 +204,41 @@ public class UserService {
     }
 
     @Transactional
+    public void batchChangeStatus(List<Long> ids, Integer status) {
+        if (status == null || (status != 0 && status != 1)) {
+            throw new BusinessException(422, "状态值无效");
+        }
+        String inClause = String.join(",", ids.stream().map(String::valueOf).toList());
+        if (!TenantContext.isSuperAdmin()) {
+            Long tenantId = TenantContext.getTenantId();
+            jdbcTemplate.update(
+                "UPDATE `user` SET status = ? WHERE id IN (" + inClause + ") AND tenant_id = ? AND is_deleted = 0",
+                status, tenantId);
+        } else {
+            jdbcTemplate.update(
+                "UPDATE `user` SET status = ? WHERE id IN (" + inClause + ") AND is_deleted = 0",
+                status);
+        }
+    }
+
+    @Transactional
+    public void batchAssignRoles(List<Long> ids, List<Long> roleIds) {
+        Long tenantId = TenantContext.getTenantId();
+        for (Long userId : ids) {
+            if (!TenantContext.isSuperAdmin()) {
+                Long count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM `user` WHERE id = ? AND tenant_id = ? AND is_deleted = 0",
+                    Long.class, userId, tenantId);
+                if (count == null || count == 0) continue;
+            }
+            jdbcTemplate.update("DELETE FROM user_role WHERE user_id = ?", userId);
+            for (Long roleId : roleIds) {
+                jdbcTemplate.update("INSERT INTO user_role (user_id, role_id) VALUES (?, ?)", userId, roleId);
+            }
+        }
+    }
+
+    @Transactional
     public void assignRoles(Long userId, List<Long> roleIds) {
         requireUser(userId);
         jdbcTemplate.update("DELETE FROM user_role WHERE user_id = ?", userId);

@@ -2,8 +2,11 @@ package com.tengyei.org.controller;
 
 import com.alibaba.excel.EasyExcel;
 import com.tengyei.common.annotation.Auditable;
+import com.tengyei.common.exception.BusinessException;
 import com.tengyei.common.response.PageResult;
 import com.tengyei.common.response.Result;
+import com.tengyei.org.dto.BatchRolesDTO;
+import com.tengyei.org.dto.BatchStatusDTO;
 import com.tengyei.org.dto.UserCreateDTO;
 import com.tengyei.org.dto.UserExportVO;
 import com.tengyei.org.dto.UserUpdateDTO;
@@ -56,6 +59,28 @@ public class UserController {
         EasyExcel.write(response.getOutputStream(), UserExportVO.class)
             .sheet("人员列表")
             .doWrite(data);
+    }
+
+    @PutMapping("/batch/status")
+    @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @Auditable(module = "人员管理", actionType = "BATCH_UPDATE", description = "批量变更人员状态")
+    public Result<Void> batchStatus(@Valid @RequestBody BatchStatusDTO dto) {
+        if (dto.getIds().size() > 200) {
+            throw new BusinessException(422, "单次最多操作 200 条");
+        }
+        userService.batchChangeStatus(dto.getIds(), dto.getStatus());
+        return Result.ok();
+    }
+
+    @PutMapping("/batch/roles")
+    @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @Auditable(module = "人员管理", actionType = "BATCH_UPDATE", description = "批量分配角色")
+    public Result<Void> batchRoles(@Valid @RequestBody BatchRolesDTO dto) {
+        if (dto.getIds().size() > 200) {
+            throw new BusinessException(422, "单次最多操作 200 条");
+        }
+        userService.batchAssignRoles(dto.getIds(), dto.getRoleIds());
+        return Result.ok();
     }
 
     @PostMapping
