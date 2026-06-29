@@ -1,3 +1,296 @@
+<script setup lang="ts">
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { deptApi, branchApi } from '@/api/org'
+import type { DeptTreeVO, DeptSaveDTO, BranchVO, BranchSaveDTO } from '@/types/org'
+
+/* ---------- Department tree ---------- */
+const treeLoading = ref(false)
+const deptTree = ref<DeptTreeVO[]>([])
+const treeProps = { label: 'name', children: 'children' }
+
+const deptDialog = ref(false)
+const deptFormRef = ref<FormInstance>()
+const deptEditingId = ref<number | null>(null)
+const deptForm = reactive<DeptSaveDTO>({ name: '', parentId: 0, sortOrder: 0 })
+const deptRules: FormRules = {
+  name: [{ required: true, message: '请输入部门名称', trigger: 'blur' }],
+}
+
+async function fetchTree() {
+  treeLoading.value = true
+  try {
+    deptTree.value = await deptApi.tree()
+  } finally {
+    treeLoading.value = false
+  }
+}
+
+function openDeptCreate(parent?: DeptTreeVO) {
+  deptEditingId.value = null
+  Object.assign(deptForm, { name: '', parentId: parent ? parent.id : 0, sortOrder: 0 })
+  deptDialog.value = true
+}
+
+function openDeptEdit(node: DeptTreeVO) {
+  deptEditingId.value = node.id
+  Object.assign(deptForm, {
+    name: node.name,
+    code: node.code,
+    parentId: node.parentId,
+    sortOrder: node.sortOrder,
+  })
+  deptDialog.value = true
+}
+
+async function submitDept() {
+  if (!deptFormRef.value) return
+  await deptFormRef.value.validate()
+  if (deptEditingId.value) {
+    await deptApi.update(deptEditingId.value, { ...deptForm })
+    ElMessage.success('部门已更新')
+  } else {
+    await deptApi.create({ ...deptForm })
+    ElMessage.success('部门已创建')
+  }
+  deptDialog.value = false
+  fetchTree()
+}
+
+async function removeDept(node: DeptTreeVO) {
+  await ElMessageBox.confirm(`确认删除部门「${node.name}」？`, '提示', { type: 'warning' })
+  await deptApi.remove(node.id)
+  ElMessage.success('已删除')
+  fetchTree()
+}
+
+/* ---------- Branch list ---------- */
+const branchLoading = ref(false)
+const branches = ref<BranchVO[]>([])
+const branchTotal = ref(0)
+const branchQuery = reactive({ page: 1, size: 20 })
+
+const branchDialog = ref(false)
+const branchFormRef = ref<FormInstance>()
+const branchEditingId = ref<number | null>(null)
+const branchForm = reactive<BranchSaveDTO>({ branchNo: '', name: '', type: 'independent' })
+const branchRules: FormRules = {
+  branchNo: [{ required: true, message: '请输入机构编号', trigger: 'blur' }],
+  name: [{ required: true, message: '请输入机构名称', trigger: 'blur' }],
+}
+
+async function fetchBranches() {
+  branchLoading.value = true
+  try {
+    const res = await branchApi.page({ page: branchQuery.page, size: branchQuery.size })
+    branches.value = res.records
+    branchTotal.value = res.total
+  } finally {
+    branchLoading.value = false
+  }
+}
+
+function openBranchCreate() {
+  branchEditingId.value = null
+  Object.assign(branchForm, {
+    branchNo: '',
+    name: '',
+    type: 'independent',
+    city: '',
+    phone: '',
+  })
+  branchDialog.value = true
+}
+
+function openBranchEdit(row: BranchVO) {
+  branchEditingId.value = row.id
+  Object.assign(branchForm, {
+    branchNo: row.branchNo,
+    name: row.name,
+    type: row.type,
+    city: row.city,
+    phone: row.phone,
+  })
+  branchDialog.value = true
+}
+
+async function submitBranch() {
+  if (!branchFormRef.value) return
+  await branchFormRef.value.validate()
+  if (branchEditingId.value) {
+    await branchApi.update(branchEditingId.value, { ...branchForm })
+    ElMessage.success('分支机构已更新')
+  } else {
+    await branchApi.create({ ...branchForm })
+    ElMessage.success('分支机构已创建')
+  }
+  branchDialog.value = false
+  fetchBranches()
+}
+
+async function toggleBranch(row: BranchVO) {
+  const next = row.status === 1 ? 0 : 1
+  const action = next === 0 ? '停用' : '启用'
+  await ElMessageBox.confirm(`确认${action}「${row.name}」？`, '提示', { type: 'warning' })
+  await branchApi.changeStatus(row.id, next)
+  ElMessage.success(`已${action}`)
+  fetchBranches()
+}
+
+onMounted(() => {
+  fetchTree()
+  fetchBranches()
+})
+</script>
+
 <template>
-  <div class="page-placeholder">组织管理（建设中）</div>
+  <div class="org">
+    <el-card class="dept-pane" shadow="never">
+      <template #header>
+        <div class="pane-head">
+          <span>部门</span>
+          <el-button link type="primary" @click="openDeptCreate()">新增根部门</el-button>
+        </div>
+      </template>
+      <el-tree
+        v-loading="treeLoading"
+        :data="deptTree"
+        :props="treeProps"
+        node-key="id"
+        default-expand-all
+      >
+        <template #default="{ data }">
+          <span class="tree-node">
+            <span>{{ data.name }}</span>
+            <span class="tree-actions">
+              <el-button link type="primary" @click.stop="openDeptCreate(data)">增</el-button>
+              <el-button link type="primary" @click.stop="openDeptEdit(data)">改</el-button>
+              <el-button link type="danger" @click.stop="removeDept(data)">删</el-button>
+            </span>
+          </span>
+        </template>
+      </el-tree>
+    </el-card>
+
+    <el-card class="branch-pane" shadow="never">
+      <template #header>
+        <div class="pane-head">
+          <span>分支机构</span>
+          <el-button type="primary" plain size="small" @click="openBranchCreate">新增分支机构</el-button>
+        </div>
+      </template>
+      <el-table v-loading="branchLoading" :data="branches" stripe>
+        <el-table-column prop="branchNo" label="机构编号" width="120" />
+        <el-table-column prop="name" label="名称" min-width="160" />
+        <el-table-column prop="phone" label="联系电话" width="140" />
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="(row as BranchVO).status === 1 ? 'success' : 'info'">
+              {{ (row as BranchVO).status === 1 ? '启用' : '停用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openBranchEdit(row as BranchVO)">编辑</el-button>
+            <el-button link type="primary" @click="toggleBranch(row as BranchVO)">
+              {{ (row as BranchVO).status === 1 ? '停用' : '启用' }}
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        class="pager"
+        layout="total, prev, pager, next"
+        :total="branchTotal"
+        :current-page="branchQuery.page"
+        :page-size="branchQuery.size"
+        @current-change="(p: number) => { branchQuery.page = p; fetchBranches() }"
+      />
+    </el-card>
+
+    <el-dialog v-model="deptDialog" :title="deptEditingId ? '编辑部门' : '新增部门'" width="420px">
+      <el-form ref="deptFormRef" :model="deptForm" :rules="deptRules" label-width="90px">
+        <el-form-item label="部门名称" prop="name">
+          <el-input v-model="deptForm.name" />
+        </el-form-item>
+        <el-form-item label="部门编码">
+          <el-input v-model="deptForm.code" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="deptForm.sortOrder" :min="0" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="deptDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitDept">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="branchDialog"
+      :title="branchEditingId ? '编辑分支机构' : '新增分支机构'"
+      width="460px"
+    >
+      <el-form ref="branchFormRef" :model="branchForm" :rules="branchRules" label-width="90px">
+        <el-form-item label="机构编号" prop="branchNo">
+          <el-input v-model="branchForm.branchNo" />
+        </el-form-item>
+        <el-form-item label="机构名称" prop="name">
+          <el-input v-model="branchForm.name" />
+        </el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="branchForm.type">
+            <el-option label="独立机构" value="independent" />
+            <el-option label="附属机构" value="affiliated" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="所在城市">
+          <el-input v-model="branchForm.city" />
+        </el-form-item>
+        <el-form-item label="联系电话">
+          <el-input v-model="branchForm.phone" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="branchDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitBranch">确定</el-button>
+      </template>
+    </el-dialog>
+  </div>
 </template>
+
+<style scoped>
+.org {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.dept-pane,
+.branch-pane {
+  border-radius: 10px;
+}
+.pane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.tree-node {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 8px;
+}
+.tree-actions {
+  opacity: 0;
+}
+.tree-node:hover .tree-actions {
+  opacity: 1;
+}
+.pager {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+</style>
