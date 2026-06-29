@@ -19,3 +19,19 @@ export interface DashboardStats {
   userCount?: number
   todayLoginCount?: number
 }
+
+export interface TrendItem {
+  date: string
+  count: number
+}
+
+export interface DistItem {
+  name: string
+  value: number
+}
+
+export interface ChartData {
+  userTrend: TrendItem[]
+  statusDist: DistItem[]
+  companyDist?: Array<{ company: string; count: number }>
+}
