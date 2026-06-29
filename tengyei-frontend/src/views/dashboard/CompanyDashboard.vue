@@ -1,14 +1,61 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { dashboardApi } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/auth'
-import type { DashboardStats } from '@/types/dashboard'
+import type { DashboardStats, ChartData } from '@/types/dashboard'
+import * as echarts from 'echarts/core'
+import { LineChart, PieChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(true)
 const router = useRouter()
 const auth = useAuthStore()
+
+const chartData = ref<ChartData | null>(null)
+const trendRef = ref<HTMLDivElement>()
+const pieRef = ref<HTMLDivElement>()
+let trendChart: echarts.ECharts | null = null
+let pieChart: echarts.ECharts | null = null
+
+async function fetchCharts() {
+  chartData.value = await dashboardApi.chartData()
+  await nextTick()
+  renderTrend()
+  renderPie()
+}
+
+function renderTrend() {
+  if (!trendRef.value || !chartData.value) return
+  if (!trendChart) trendChart = echarts.init(trendRef.value)
+  const dates = chartData.value.userTrend.map(d => d.date)
+  const counts = chartData.value.userTrend.map(d => d.count)
+  trendChart.setOption({
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: dates },
+    yAxis: { type: 'value', minInterval: 1 },
+    series: [{ name: '新增用户', type: 'line', smooth: true, data: counts, areaStyle: {} }],
+  })
+}
+
+function renderPie() {
+  if (!pieRef.value || !chartData.value) return
+  if (!pieChart) pieChart = echarts.init(pieRef.value)
+  pieChart.setOption({
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0 },
+    series: [{
+      name: '用户状态',
+      type: 'pie',
+      radius: ['40%', '70%'],
+      data: chartData.value.statusDist,
+    }],
+  })
+}
 
 onMounted(async () => {
   try {
@@ -16,6 +63,7 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  fetchCharts()
 })
 
 interface Shortcut {
@@ -65,6 +113,17 @@ const shortcuts: Shortcut[] = [
         </template>
       </div>
     </el-card>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title">近7天用户增长</div>
+        <div ref="trendRef" style="height: 240px" />
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">用户状态分布</div>
+        <div ref="pieRef" style="height: 240px" />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -114,5 +173,23 @@ const shortcuts: Shortcut[] = [
 }
 .shortcut:hover {
   background: #e0ecff;
+}
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+.chart-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 12px;
 }
 </style>
