@@ -20,4 +20,9 @@ public class DashboardController {
     public Result<Map<String, Object>> stats() {
         return Result.ok(dashboardService.stats());
     }
+
+    @GetMapping("/chart-data")
+    public Result<Map<String, Object>> chartData() {
+        return Result.ok(dashboardService.chartData());
+    }
 }

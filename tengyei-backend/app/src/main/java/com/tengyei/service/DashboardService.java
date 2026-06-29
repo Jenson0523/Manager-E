@@ -48,6 +48,65 @@ public class DashboardService {
         return data;
     }
 
+    public Map<String, Object> chartData() {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+
+        Long tenantId = TenantContext.isSuperAdmin() ? null : TenantContext.getTenantId();
+
+        // 近7天用户增长趋势（user_trend）
+        String trendSql;
+        List<Object> trendParams = new java.util.ArrayList<>();
+        if (tenantId != null) {
+            trendSql = "SELECT DATE(created_at) AS date, COUNT(*) AS count " +
+                       "FROM `user` WHERE is_deleted=0 AND is_super_admin=0 AND tenant_id=? " +
+                       "AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) " +
+                       "GROUP BY DATE(created_at) ORDER BY date";
+            trendParams.add(tenantId);
+        } else {
+            trendSql = "SELECT DATE(created_at) AS date, COUNT(*) AS count " +
+                       "FROM `user` WHERE is_deleted=0 AND is_super_admin=0 " +
+                       "AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) " +
+                       "GROUP BY DATE(created_at) ORDER BY date";
+        }
+        List<Map<String, Object>> trendRows = jdbcTemplate.queryForList(trendSql, trendParams.toArray());
+        result.put("userTrend", trendRows);
+
+        // 用户状态分布（status_dist）
+        String distSql;
+        List<Object> distParams = new java.util.ArrayList<>();
+        if (tenantId != null) {
+            distSql = "SELECT status, COUNT(*) AS count FROM `user` " +
+                      "WHERE is_deleted=0 AND is_super_admin=0 AND tenant_id=? " +
+                      "GROUP BY status";
+            distParams.add(tenantId);
+        } else {
+            distSql = "SELECT status, COUNT(*) AS count FROM `user` " +
+                      "WHERE is_deleted=0 AND is_super_admin=0 " +
+                      "GROUP BY status";
+        }
+        List<Map<String, Object>> distRows = jdbcTemplate.queryForList(distSql, distParams.toArray());
+        List<Map<String, Object>> statusDist = distRows.stream().map(row -> {
+            Map<String, Object> item = new java.util.LinkedHashMap<>();
+            int s = ((Number) row.get("status")).intValue();
+            item.put("name", s == 1 ? "启用" : "停用");
+            item.put("value", row.get("count"));
+            return item;
+        }).toList();
+        result.put("statusDist", statusDist);
+
+        // 超管专有：各企业用户数（company_dist，仅 super admin）
+        if (tenantId == null) {
+            String compSql = "SELECT t.name AS company, COUNT(u.id) AS count " +
+                             "FROM tenant t LEFT JOIN `user` u ON u.tenant_id=t.id " +
+                             "AND u.is_deleted=0 AND u.is_super_admin=0 " +
+                             "GROUP BY t.id, t.name ORDER BY count DESC LIMIT 10";
+            List<Map<String, Object>> compRows = jdbcTemplate.queryForList(compSql);
+            result.put("companyDist", compRows);
+        }
+
+        return result;
+    }
+
     private long count(String sql, Object... args) {
         Long n = jdbcTemplate.queryForObject(sql, Long.class, args);
         return n != null ? n : 0L;
