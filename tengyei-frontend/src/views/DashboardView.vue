@@ -1,14 +1,14 @@
-<template>
-  <div class="dashboard">
-    <h1>工作台</h1>
-  </div>
-</template>
-
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import SuperDashboard from './dashboard/SuperDashboard.vue'
+import CompanyDashboard from './dashboard/CompanyDashboard.vue'
+
+const auth = useAuthStore()
+const isSuper = computed(() => auth.isSuperAdmin)
 </script>
 
-<style scoped>
-.dashboard {
-  padding: 24px;
-}
-</style>
+<template>
+  <SuperDashboard v-if="isSuper" />
+  <CompanyDashboard v-else />
+</template>
