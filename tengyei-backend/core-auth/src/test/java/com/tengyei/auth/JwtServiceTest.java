@@ -24,7 +24,7 @@ class JwtServiceTest {
     @Test
     void generate_and_parse_token() {
         String token = jwtService.generate(10001L, 5001L, 201L,
-                List.of("branch_admin"), List.of("user:view"), "branch");
+                List.of("branch_admin"), List.of("user:view"), "branch", "张三");
 
         assertThat(jwtService.isValid(token)).isTrue();
         assertThat(jwtService.getTenantId(token)).isEqualTo(10001L);
@@ -43,7 +43,7 @@ class JwtServiceTest {
     @Test
     void super_admin_token_has_tenant_zero_and_null_branch() {
         String token = jwtService.generate(0L, 1L, null,
-                List.of("super_admin"), List.of(), "all");
+                List.of("super_admin"), List.of(), "all", "超级管理员");
         assertThat(jwtService.getTenantId(token)).isEqualTo(0L);
         assertThat(jwtService.getBranchId(token)).isNull();
     }
@@ -51,7 +51,7 @@ class JwtServiceTest {
     @Test
     void permissions_round_trip() {
         List<String> perms = List.of("user:view", "user:create", "dept:view");
-        String token = jwtService.generate(1L, 1L, null, List.of("admin"), perms, "all");
+        String token = jwtService.generate(1L, 1L, null, List.of("admin"), perms, "all", "管理员");
         assertThat(jwtService.getPermissions(token)).containsExactlyInAnyOrder(
                 "user:view", "user:create", "dept:view");
     }

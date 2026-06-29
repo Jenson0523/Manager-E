@@ -1,5 +1,6 @@
 package com.tengyei.org.controller;
 
+import com.tengyei.common.annotation.Auditable;
 import com.tengyei.common.response.PageResult;
 import com.tengyei.common.response.Result;
 import com.tengyei.org.dto.BranchSaveDTO;
@@ -29,12 +30,14 @@ public class BranchController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('PERM_branch:create')")
+    @Auditable(module = "分公司管理", actionType = "CREATE", description = "新建分公司")
     public Result<Map<String, Long>> create(@Valid @RequestBody BranchSaveDTO dto) {
         return Result.ok(Map.of("id", branchService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_branch:edit')")
+    @Auditable(module = "分公司管理", actionType = "UPDATE", description = "编辑分公司信息")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody BranchSaveDTO dto) {
         branchService.update(id, dto);
         return Result.ok();
@@ -42,6 +45,7 @@ public class BranchController {
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority('PERM_branch:edit')")
+    @Auditable(module = "分公司管理", actionType = "UPDATE", description = "变更分公司状态")
     public Result<Void> changeStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         branchService.changeStatus(id, body.get("status"));
         return Result.ok();

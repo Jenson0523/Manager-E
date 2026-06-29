@@ -1,5 +1,6 @@
 package com.tengyei.org.controller;
 
+import com.tengyei.common.annotation.Auditable;
 import com.tengyei.common.response.PageResult;
 import com.tengyei.common.response.Result;
 import com.tengyei.org.dto.UserCreateDTO;
@@ -34,12 +35,14 @@ public class UserController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('PERM_user:create')")
+    @Auditable(module = "人员管理", actionType = "CREATE", description = "新建人员")
     public Result<Map<String, Long>> create(@Valid @RequestBody UserCreateDTO dto) {
         return Result.ok(Map.of("id", userService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @Auditable(module = "人员管理", actionType = "UPDATE", description = "编辑人员信息")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody UserUpdateDTO dto) {
         userService.update(id, dto);
         return Result.ok();
@@ -47,6 +50,7 @@ public class UserController {
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @Auditable(module = "人员管理", actionType = "UPDATE", description = "变更人员状态")
     public Result<Void> changeStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         userService.changeStatus(id, body.get("status"));
         return Result.ok();
@@ -54,6 +58,7 @@ public class UserController {
 
     @PutMapping("/{id}/roles")
     @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @Auditable(module = "人员管理", actionType = "UPDATE", description = "分配人员角色")
     public Result<Void> assignRoles(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
         userService.assignRoles(id, body.get("roleIds"));
         return Result.ok();
@@ -61,6 +66,7 @@ public class UserController {
 
     @PutMapping("/{id}/reset-password")
     @PreAuthorize("hasAuthority('PERM_user:reset_pwd')")
+    @Auditable(module = "人员管理", actionType = "UPDATE", description = "重置人员密码")
     public Result<Void> resetPassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
         userService.resetPassword(id, body.get("password"));
         return Result.ok();

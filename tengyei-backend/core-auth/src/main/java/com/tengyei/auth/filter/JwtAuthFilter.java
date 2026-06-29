@@ -45,12 +45,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 Long userId = jwtService.getUserId(token);
                 Long branchId = jwtService.getBranchId(token);
                 String dataScope = jwtService.getDataScope(token);
+                String realName = jwtService.getRealName(token);
                 List<String> permissions = jwtService.getPermissions(token);
 
                 TenantContext.setTenantId(tenantId);
                 TenantContext.setUserId(userId);
                 TenantContext.setBranchId(branchId);
                 TenantContext.setDataScope(dataScope);
+                TenantContext.setUserName(realName);
 
                 List<SimpleGrantedAuthority> authorities = permissions.stream()
                         .map(p -> new SimpleGrantedAuthority("PERM_" + p))

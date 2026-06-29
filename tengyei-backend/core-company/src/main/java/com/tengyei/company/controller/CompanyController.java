@@ -1,5 +1,6 @@
 package com.tengyei.company.controller;
 
+import com.tengyei.common.annotation.Auditable;
 import com.tengyei.common.response.PageResult;
 import com.tengyei.common.response.Result;
 import com.tengyei.company.dto.CompanyCreateDTO;
@@ -37,6 +38,7 @@ public class CompanyController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('PERM_*')")
+    @Auditable(module = "企业管理", actionType = "CREATE", description = "新建企业")
     public Result<Map<String, Long>> create(@Valid @RequestBody CompanyCreateDTO dto) {
         Long id = companyService.create(dto);
         return Result.ok(Map.of("id", id));
@@ -44,6 +46,7 @@ public class CompanyController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_*')")
+    @Auditable(module = "企业管理", actionType = "UPDATE", description = "编辑企业信息")
     public Result<Void> update(@PathVariable("id") Long id, @Valid @RequestBody CompanyUpdateDTO dto) {
         companyService.update(id, dto);
         return Result.ok();
@@ -51,6 +54,7 @@ public class CompanyController {
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority('PERM_*')")
+    @Auditable(module = "企业管理", actionType = "UPDATE", description = "变更企业状态")
     public Result<Void> changeStatus(@PathVariable("id") Long id, @RequestBody Map<String, Integer> body) {
         companyService.changeStatus(id, body.get("status"));
         return Result.ok();

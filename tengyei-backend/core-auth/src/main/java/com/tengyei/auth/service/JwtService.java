@@ -30,7 +30,8 @@ public class JwtService {
     }
 
     public String generate(Long tenantId, Long userId, Long branchId,
-                           List<String> roleCodes, List<String> permissions, String dataScope) {
+                           List<String> roleCodes, List<String> permissions, String dataScope,
+                           String realName) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .claim("tenant_id", tenantId)
@@ -39,10 +40,16 @@ public class JwtService {
                 .claim("role_codes", roleCodes)
                 .claim("permissions", permissions)
                 .claim("data_scope", dataScope)
+                .claim("real_name", realName)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(expireHours * 3600)))
                 .signWith(secretKey)
                 .compact();
+    }
+
+    public String getRealName(String token) {
+        Object val = getClaims(token).get("real_name");
+        return val != null ? val.toString() : null;
     }
 
     public boolean isValid(String token) {

@@ -1,5 +1,6 @@
 package com.tengyei.rbac.controller;
 
+import com.tengyei.common.annotation.Auditable;
 import com.tengyei.common.response.Result;
 import com.tengyei.rbac.dto.RoleSaveDTO;
 import com.tengyei.rbac.dto.RoleVO;
@@ -27,12 +28,14 @@ public class RoleController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('PERM_role:create')")
+    @Auditable(module = "角色管理", actionType = "CREATE", description = "新建角色")
     public Result<Map<String, Long>> create(@Valid @RequestBody RoleSaveDTO dto) {
         return Result.ok(Map.of("id", roleService.create(dto)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_role:edit')")
+    @Auditable(module = "角色管理", actionType = "UPDATE", description = "编辑角色")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody RoleSaveDTO dto) {
         roleService.update(id, dto);
         return Result.ok();
@@ -40,6 +43,7 @@ public class RoleController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_role:delete')")
+    @Auditable(module = "角色管理", actionType = "DELETE", description = "删除角色")
     public Result<Void> delete(@PathVariable Long id) {
         roleService.delete(id);
         return Result.ok();
@@ -53,6 +57,7 @@ public class RoleController {
 
     @PutMapping("/{id}/permissions")
     @PreAuthorize("hasAuthority('PERM_role:edit')")
+    @Auditable(module = "角色管理", actionType = "UPDATE", description = "配置角色权限")
     public Result<Void> assignPermissions(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
         roleService.assignPermissions(id, body.get("permissionIds"));
         return Result.ok();

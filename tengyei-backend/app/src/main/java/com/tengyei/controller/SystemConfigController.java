@@ -1,5 +1,6 @@
 package com.tengyei.controller;
 
+import com.tengyei.common.annotation.Auditable;
 import com.tengyei.common.context.TenantContext;
 import com.tengyei.common.response.Result;
 import jakarta.validation.Valid;
@@ -31,6 +32,7 @@ public class SystemConfigController {
 
     @PutMapping("/{key}")
     @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_setting:edit')")
+    @Auditable(module = "系统配置", actionType = "UPDATE", description = "修改系统配置")
     public Result<Void> update(@PathVariable String key, @Valid @RequestBody ConfigValueDTO dto) {
         Long tenantId = TenantContext.isSuperAdmin() ? 0L : TenantContext.getTenantId();
         int affected = jdbcTemplate.update(

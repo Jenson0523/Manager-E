@@ -140,7 +140,8 @@ public class AuthService {
             dataScope = scope != null ? scope : "self";
         }
 
-        String token = jwtService.generate(tenantId, userId, branchId, roleCodes, permissions, dataScope);
+        String token = jwtService.generate(tenantId, userId, branchId, roleCodes, permissions, dataScope,
+                (String) row.get("real_name"));
         writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 1, null);
 
         return LoginResponse.builder()
@@ -197,7 +198,8 @@ public class AuthService {
             "WHERE ur.user_id = ? AND p.status = 1",
             String.class, userId
         );
-        return jwtService.generate(tenantId, userId, branchId, roleCodes, permissions, dataScope);
+        String realName = jwtService.getRealName(token);
+        return jwtService.generate(tenantId, userId, branchId, roleCodes, permissions, dataScope, realName);
     }
 
     private Long toLong(Object val) {

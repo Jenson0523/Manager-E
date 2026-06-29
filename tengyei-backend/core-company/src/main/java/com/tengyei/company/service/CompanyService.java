@@ -10,12 +10,16 @@ import com.tengyei.company.dto.CompanyVO;
 import com.tengyei.company.entity.Company;
 import com.tengyei.company.mapper.CompanyMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.UUID;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CompanyService {
@@ -42,12 +46,15 @@ public class CompanyService {
 
     @Transactional
     public Long create(CompanyCreateDTO dto) {
+        // 1. Check username uniqueness (via raw JDBC to bypass MyBatis tenant filter)
         Long existing = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM `user` WHERE username = ?", Long.class, dto.getAdminUsername());
+            "SELECT COUNT(*) FROM `user` WHERE username = ? AND is_deleted = 0",
+            Long.class, dto.getAdminUsername());
         if (existing != null && existing > 0) {
             throw new BusinessException(409, "管理员账号已存在");
         }
 
+        // 2. Insert company — use UUID as temp company_no to avoid UNIQUE conflicts
         Company c = new Company();
         c.setFullName(dto.getFullName());
         c.setShortName(dto.getShortName());
@@ -55,22 +62,32 @@ public class CompanyService {
         c.setAdminName(dto.getAdminName());
         c.setAdminPhone(dto.getAdminPhone());
         c.setAdminEmail(dto.getAdminEmail());
-        c.setStatus(1); // 创建即启用
-        c.setCompanyNo("PENDING");
+        c.setStatus(1);
+        c.setCompanyNo("T-" + UUID.randomUUID().toString().substring(0, 8));
+        log.info("Creating company: fullName={}", dto.getFullName());
         companyMapper.insert(c);
 
         Long companyId = c.getId();
+        log.info("Company inserted with id={}, updating company_no", companyId);
         c.setCompanyNo("E" + String.format("%06d", companyId));
         companyMapper.updateById(c);
 
+        // 3. Insert admin user via JdbcTemplate (bypasses MyBatis tenant interceptor)
         String encoded = passwordEncoder.encode(dto.getAdminPassword());
+        log.info("Inserting admin user for company id={}", companyId);
         jdbcTemplate.update(
             "INSERT INTO `user` (tenant_id, user_no, username, password, real_name, phone, email, " +
-            "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1, 0, NOW(), NOW())",
-            companyId, "U" + companyId + "-0001", dto.getAdminUsername(), encoded,
-            dto.getAdminName(), dto.getAdminPhone(), dto.getAdminEmail());
+            "is_super_admin, status, pwd_reset_required, login_fail_count, is_deleted, created_at, updated_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1, 0, 0, NOW(), NOW())",
+            companyId,
+            "U" + companyId + "-0001",
+            dto.getAdminUsername(),
+            encoded,
+            dto.getAdminName(),
+            dto.getAdminPhone(),
+            dto.getAdminEmail());
 
+        log.info("Company creation completed: id={}, no=E{}", companyId, String.format("%06d", companyId));
         return companyId;
     }
 
