@@ -6,6 +6,7 @@ import com.tengyei.common.context.TenantContext;
 import com.tengyei.common.exception.BusinessException;
 import com.tengyei.common.response.PageResult;
 import com.tengyei.org.dto.UserCreateDTO;
+import com.tengyei.org.dto.UserExportVO;
 import com.tengyei.org.dto.UserUpdateDTO;
 import com.tengyei.org.dto.UserVO;
 import com.tengyei.org.entity.Dept;
@@ -22,6 +23,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -124,6 +126,51 @@ public class UserService {
         u.setDeptId(dto.getDeptId());
         u.setBranchId(dto.getBranchId());
         userMapper.updateById(u);
+    }
+
+    public List<UserExportVO> export(String keyword, Long deptId) {
+        List<Object> params = new ArrayList<>();
+        StringBuilder sql = new StringBuilder(
+            "SELECT u.id, u.username, u.real_name, u.phone, u.email, " +
+            "u.status, u.created_at, d.name AS dept_name " +
+            "FROM `user` u LEFT JOIN dept d ON d.id = u.dept_id " +
+            "WHERE u.is_super_admin = 0 AND u.is_deleted = 0");
+
+        if (!TenantContext.isSuperAdmin()) {
+            sql.append(" AND u.tenant_id = ?");
+            params.add(TenantContext.getTenantId());
+        }
+        if (StringUtils.hasText(keyword)) {
+            sql.append(" AND (u.real_name LIKE ? OR u.username LIKE ? OR u.phone LIKE ?)");
+            String kw = "%" + keyword + "%";
+            params.add(kw); params.add(kw); params.add(kw);
+        }
+        if (deptId != null) {
+            sql.append(" AND u.dept_id = ?");
+            params.add(deptId);
+        }
+        sql.append(" ORDER BY u.id LIMIT 5000");
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.toString(), params.toArray());
+
+        return rows.stream().map(row -> {
+            Long userId = ((Number) row.get("id")).longValue();
+            List<String> roleNames = jdbcTemplate.queryForList(
+                "SELECT r.name FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
+                String.class, userId);
+
+            UserExportVO vo = new UserExportVO();
+            vo.setRealName((String) row.get("real_name"));
+            vo.setUsername((String) row.get("username"));
+            vo.setPhone((String) row.get("phone"));
+            vo.setEmail((String) row.get("email"));
+            vo.setDeptName((String) row.get("dept_name"));
+            vo.setRoles(String.join(", ", roleNames));
+            vo.setStatus(Integer.valueOf(1).equals(row.get("status")) ? "启用" : "停用");
+            Object ca = row.get("created_at");
+            vo.setCreatedAt(ca != null ? ca.toString() : "");
+            return vo;
+        }).toList();
     }
 
     public void changeStatus(Long id, Integer status) {
