@@ -21,6 +21,6 @@ mybatis-plus:
 
 tengyei:
   jwt:
-    secret: ${TENGYEI_JWT_SECRET}
+    secret: ${TENGYEI_JWT_SECRET:TengYeiJwtSecretKey2026ForLocalDevOnly!!}
     expire-hours: 2
     refresh-before-minutes: 30

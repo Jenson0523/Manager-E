@@ -43,7 +43,7 @@ public class CompanyService {
     @Transactional
     public Long create(CompanyCreateDTO dto) {
         Long existing = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM user WHERE username = ?", Long.class, dto.getAdminUsername());
+            "SELECT COUNT(*) FROM `user` WHERE username = ?", Long.class, dto.getAdminUsername());
         if (existing != null && existing > 0) {
             throw new BusinessException(409, "管理员账号已存在");
         }
@@ -65,7 +65,7 @@ public class CompanyService {
 
         String encoded = passwordEncoder.encode(dto.getAdminPassword());
         jdbcTemplate.update(
-            "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, email, " +
+            "INSERT INTO `user` (tenant_id, user_no, username, password, real_name, phone, email, " +
             "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
             "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, 1, 0, NOW(), NOW())",
             companyId, "U" + companyId + "-0001", dto.getAdminUsername(), encoded,

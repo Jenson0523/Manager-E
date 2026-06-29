@@ -62,7 +62,7 @@ public class UserService {
     @Transactional
     public Long create(UserCreateDTO dto) {
         Long global = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM user WHERE username = ?", Long.class, dto.getUsername());
+            "SELECT COUNT(*) FROM `user` WHERE username = ?", Long.class, dto.getUsername());
         if (global != null && global > 0) {
             throw new BusinessException(409, "用户名已存在");
         }
@@ -128,7 +128,7 @@ public class UserService {
         u.setLoginFailCount(0);
         userMapper.updateById(u);
         // updateById ignores null fields, so clear locked_until explicitly
-        jdbcTemplate.update("UPDATE user SET locked_until = NULL WHERE id = ?", id);
+        jdbcTemplate.update("UPDATE `user` SET locked_until = NULL WHERE id = ?", id);
     }
 
     private User requireUser(Long id) {

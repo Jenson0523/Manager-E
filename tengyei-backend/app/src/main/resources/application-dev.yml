@@ -15,10 +15,7 @@ spring:
       database: 0
       timeout: 3000ms
 
-mybatis-plus:
-  configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
-
 logging:
   level:
     com.tengyei: DEBUG
+    root: WARN
