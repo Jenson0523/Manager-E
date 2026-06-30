@@ -14,6 +14,8 @@ const iconMap: Record<string, Component> = {
   '/admin/companies': OfficeBuilding,
   '/admin/audit-logs': Document,
   '/admin/system-config': Setting,
+  '/admin/users': User,
+  '/admin/roles': Lock,
   '/company/org': Share,
   '/company/users': User,
   '/company/roles': Lock,

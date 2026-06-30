@@ -53,6 +53,18 @@ const router = createRouter({
           meta: { title: '系统设置' },
         },
         {
+          path: 'admin/users',
+          name: 'PlatformUsers',
+          component: () => import('@/views/platform/PlatformUserListView.vue'),
+          meta: { title: '平台人员' },
+        },
+        {
+          path: 'admin/roles',
+          name: 'PlatformRoles',
+          component: () => import('@/views/platform/PlatformRoleView.vue'),
+          meta: { title: '平台角色' },
+        },
+        {
           path: 'company/org',
           name: 'Org',
           component: () => import('@/views/org/OrgView.vue'),
