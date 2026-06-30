@@ -43,7 +43,7 @@
 | **平台员工** | `tenant_id=0, is_super_admin=0`,权限来自所分配的平台角色(走 `AuthService` 的 else 分支,前提是公司校验已按层级跳过)。 |
 | **权限分层** | `permission` 加 `tier` 列(`platform`/`company`);现有权限标 `company`,新增一批 `platform:*` 权限标 `platform`。 |
 | **端点守卫** | 平台端点用 `hasAnyAuthority('PERM_*', 'PERM_platform:xxx')`——内置 owner(`PERM_*`)与持具体平台权限的员工都放行。 |
-| **复用 vs 独立** | 角色服务(`RoleService`)已租户隔离,可被平台/公司两侧复用;但平台**人员**管理需独立端点(因 `UserService` 对超管"跳过租户过滤、看全部用户",直接复用会让超管看到所有公司的人)。 |
+| **复用 vs 独立** | 租户拦截器对 `tenant_id=0` 的调用者**整体关闭**(`TenantContext.isSuperAdmin()` 判定即 `tenant==0`),故平台角色/人员都**不能依赖** `RoleService`/`UserService` 的自动隔离——平台员工按 ID 可能越权改到公司数据。因此平台 RBAC 后端**独立实现**,所有查询/改动显式限定 `tenant_id=0` 并校验目标行属于平台层;**复用只在前端 UI 组件/范式层面**(权限矩阵、列表页样式)。 |
 
 ---
 
@@ -61,9 +61,10 @@
 - **权限查询接口按 tier 过滤**:权限分组接口(供权限矩阵)根据调用者层级返回对应 tier 的权限——平台用户(tenant 0)只见 `platform` 权限,公司用户只见 `company` 权限。
 
 ### A2 平台角色管理
-- **复用** `RoleService`(已按 `TenantContext.tenantId` 隔离:平台用户操作即 `tenant_id=0` 的平台角色)。
-- 新增独立平台角色端点 `/api/v1/platform/roles`,守卫 `hasAnyAuthority('PERM_*','PERM_platform:role:...')`,委托 `RoleService`;权限矩阵走 A1 的 tier 过滤(平台角色只列 platform 权限)。
+- 新增**独立**平台角色端点 `/api/v1/platform/roles`(CRUD + 权限配置),守卫 `hasAnyAuthority('PERM_*','PERM_platform:role:...')`,由独立的平台 RBAC 服务实现,所有操作**显式限定 `tenant_id=0`**(查询带 `tenant_id=0` 条件;按 ID 改动前校验该角色 `tenant_id=0`),不依赖租户拦截器。
+- 权限矩阵走 A1 的 tier 过滤(平台角色只列 platform 权限)。
 - 平台角色 `data_scope` 固定为 `all`(平台层无 branch/dept,不做数据范围细分),前端隐藏数据范围选择项。
+- 前端**复用权限矩阵 UI 组件**(参照 `RoleView.vue`),但为独立页面、走 `/platform/roles` 接口。
 - 前端新增"平台角色"页,复用现有权限矩阵组件(参照 `RoleView.vue`)。
 
 ### A3 平台账号管理
