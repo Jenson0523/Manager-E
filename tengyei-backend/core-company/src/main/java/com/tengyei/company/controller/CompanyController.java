@@ -22,7 +22,7 @@ public class CompanyController {
     private final CompanyService companyService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERM_*')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:view')")
     public Result<PageResult<CompanyVO>> page(
             @RequestParam(name = "page", defaultValue = "1") long page,
             @RequestParam(name = "size", defaultValue = "20") long size,
@@ -31,13 +31,13 @@ public class CompanyController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_*')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:view')")
     public Result<CompanyVO> detail(@PathVariable("id") Long id) {
         return Result.ok(companyService.detail(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('PERM_*')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:create')")
     @Auditable(module = "企业管理", actionType = "CREATE", description = "新建企业")
     public Result<Map<String, Long>> create(@Valid @RequestBody CompanyCreateDTO dto) {
         Long id = companyService.create(dto);
@@ -45,7 +45,7 @@ public class CompanyController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_*')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:edit')")
     @Auditable(module = "企业管理", actionType = "UPDATE", description = "编辑企业信息")
     public Result<Void> update(@PathVariable("id") Long id, @Valid @RequestBody CompanyUpdateDTO dto) {
         companyService.update(id, dto);
@@ -53,7 +53,7 @@ public class CompanyController {
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('PERM_*')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:disable')")
     @Auditable(module = "企业管理", actionType = "UPDATE", description = "变更企业状态")
     public Result<Void> changeStatus(@PathVariable("id") Long id, @RequestBody Map<String, Integer> body) {
         companyService.changeStatus(id, body.get("status"));
@@ -61,7 +61,7 @@ public class CompanyController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_*')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:disable')")
     @Auditable(module = "企业管理", actionType = "DELETE", description = "删除企业")
     public Result<Void> delete(@PathVariable("id") Long id) {
         companyService.delete(id);
