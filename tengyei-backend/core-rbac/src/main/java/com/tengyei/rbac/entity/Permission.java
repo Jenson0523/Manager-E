@@ -18,4 +18,5 @@ public class Permission {
     private String description;
     private Integer sortOrder;
     private Integer status;
+    private String tier;
 }

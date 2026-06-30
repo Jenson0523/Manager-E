@@ -19,9 +19,11 @@ public class PermissionService {
     private final PermissionMapper permissionMapper;
 
     public List<PermissionGroupVO> grouped() {
+        String tier = com.tengyei.common.context.TenantContext.isSuperAdmin() ? "platform" : "company";
         List<Permission> all = permissionMapper.selectList(
             new LambdaQueryWrapper<Permission>()
                 .eq(Permission::getStatus, 1)
+                .eq(Permission::getTier, tier)
                 .orderByAsc(Permission::getSortOrder));
         Map<String, List<PermissionGroupVO.Item>> byModule = new LinkedHashMap<>();
         for (Permission p : all) {
