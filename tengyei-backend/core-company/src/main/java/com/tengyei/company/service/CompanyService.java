@@ -87,6 +87,34 @@ public class CompanyService {
             dto.getAdminPhone(),
             dto.getAdminEmail());
 
+        // 4. 取刚插入的管理员 userId
+        Long adminUserId = jdbcTemplate.queryForObject(
+            "SELECT id FROM user WHERE username = ? AND is_deleted = 0",
+            Long.class, dto.getAdminUsername());
+
+        // 5. 建预设 company_admin 角色
+        org.springframework.jdbc.support.GeneratedKeyHolder kh =
+            new org.springframework.jdbc.support.GeneratedKeyHolder();
+        jdbcTemplate.update(con -> {
+            var ps = con.prepareStatement(
+                "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, " +
+                "is_deleted, created_at, updated_at) VALUES (?, '企业管理员', 'company_admin', 'all', 1, 1, 0, NOW(), NOW())",
+                java.sql.Statement.RETURN_GENERATED_KEYS);
+            ps.setLong(1, companyId);
+            return ps;
+        }, kh);
+        Long roleId = ((Number) kh.getKeys().get("ID")).longValue();
+
+        // 6. 挂接管理员到 company_admin 角色
+        jdbcTemplate.update(
+            "INSERT INTO user_role (user_id, role_id, created_at) VALUES (?, ?, NOW())",
+            adminUserId, roleId);
+
+        // 7. 授予全部 company 层权限
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id, permission_id, created_at) " +
+            "SELECT ?, id, NOW() FROM permission WHERE tier = 'company'", roleId);
+
         log.info("Company creation completed: id={}, no=E{}", companyId, String.format("%06d", companyId));
         return companyId;
     }
