@@ -92,18 +92,14 @@ public class CompanyService {
             "SELECT id FROM user WHERE username = ? AND is_deleted = 0",
             Long.class, dto.getAdminUsername());
 
-        // 5. 建预设 company_admin 角色
-        org.springframework.jdbc.support.GeneratedKeyHolder kh =
-            new org.springframework.jdbc.support.GeneratedKeyHolder();
-        jdbcTemplate.update(con -> {
-            var ps = con.prepareStatement(
-                "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, " +
-                "is_deleted, created_at, updated_at) VALUES (?, '企业管理员', 'company_admin', 'all', 1, 1, 0, NOW(), NOW())",
-                java.sql.Statement.RETURN_GENERATED_KEYS);
-            ps.setLong(1, companyId);
-            return ps;
-        }, kh);
-        Long roleId = ((Number) kh.getKeys().get("ID")).longValue();
+        // 5. 建预设 company_admin 角色（query-back 取 id，兼容 H2/MySQL）
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, " +
+            "is_deleted, created_at, updated_at) VALUES (?, '企业管理员', 'company_admin', 'all', 1, 1, 0, NOW(), NOW())",
+            companyId);
+        Long roleId = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id = ? AND code = 'company_admin'",
+            Long.class, companyId);
 
         // 6. 挂接管理员到 company_admin 角色
         jdbcTemplate.update(
