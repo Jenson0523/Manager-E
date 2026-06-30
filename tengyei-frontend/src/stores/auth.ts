@@ -39,7 +39,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   function hasPermission(perm: string): boolean {
     if (isSuperAdmin.value) return true
-    return permissions.value.includes(perm) || permissions.value.includes('*')
+    if (permissions.value.includes('*')) return true
+    // permissions claim holds raw codes (e.g. "user:create"); templates may pass "PERM_user:create"
+    const raw = perm.startsWith('PERM_') ? perm.slice(5) : perm
+    return permissions.value.includes(raw)
   }
 
   return {

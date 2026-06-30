@@ -5,10 +5,12 @@ import SuperDashboard from './dashboard/SuperDashboard.vue'
 import CompanyDashboard from './dashboard/CompanyDashboard.vue'
 
 const auth = useAuthStore()
-const isSuper = computed(() => auth.isSuperAdmin)
+// Platform tier (tenant_id === 0: owner or platform staff) sees the platform dashboard;
+// company-tier users see the company dashboard. Keys on tier, not the is_super_admin flag.
+const isPlatform = computed(() => auth.userInfo?.tenantId === 0)
 </script>
 
 <template>
-  <SuperDashboard v-if="isSuper" />
+  <SuperDashboard v-if="isPlatform" />
   <CompanyDashboard v-else />
 </template>
