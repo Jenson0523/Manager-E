@@ -106,13 +106,16 @@ public class PlatformRbacService {
         sql.append(" ORDER BY id");
         return jdbc.query(sql.toString(), params.toArray(), (rs, i) -> {
             long uid = rs.getLong("id");
+            List<Long> roleIds = jdbc.queryForList(
+                "SELECT r.id FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
+                Long.class, uid);
             List<String> roleNames = jdbc.queryForList(
                 "SELECT r.name FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
                 String.class, uid);
             return PlatformUserVO.builder()
                 .id(uid).username(rs.getString("username")).realName(rs.getString("real_name"))
                 .phone(rs.getString("phone")).email(rs.getString("email")).status(rs.getInt("status"))
-                .isSuperAdmin(rs.getInt("is_super_admin")).roleNames(roleNames).build();
+                .isSuperAdmin(rs.getInt("is_super_admin")).roleIds(roleIds).roleNames(roleNames).build();
         });
     }
 

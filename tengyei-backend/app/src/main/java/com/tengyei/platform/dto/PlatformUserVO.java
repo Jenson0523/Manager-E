@@ -14,5 +14,6 @@ public class PlatformUserVO {
     private String email;
     private Integer status;
     private Integer isSuperAdmin;
+    private List<Long> roleIds;
     private List<String> roleNames;
 }

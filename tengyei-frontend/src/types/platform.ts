@@ -21,6 +21,7 @@ export interface PlatformUserVO {
   email?: string
   status: number
   isSuperAdmin: number
+  roleIds: number[]
   roleNames: string[]
 }
 
