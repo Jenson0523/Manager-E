@@ -78,7 +78,7 @@ public final class OrgTestSupport {
         // grant ALL permissions to this role
         jdbc.update(
             "INSERT INTO role_permission (role_id, permission_id, created_at) " +
-            "SELECT ?, id, NOW() FROM permission", roleId);
+            "SELECT ?, id, NOW() FROM permission WHERE tier = 'company'", roleId);
 
         return new Seeded(tenantId, adminUserId, roleId, username);
     }
