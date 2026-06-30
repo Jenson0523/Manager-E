@@ -91,8 +91,8 @@ public class AuthService {
             throw new BusinessException(401, "用户名或密码错误，还可尝试 " + (MAX_FAIL_COUNT - newFailCount) + " 次");
         }
 
-        // Check company status for non-super-admin
-        if (!isSuperAdmin) {
+        // Check company status only for company-tier users (tenant_id != 0)
+        if (!isSuperAdmin && tenantId != null && tenantId != 0L) {
             List<Map<String, Object>> companyRows = jdbcTemplate.queryForList(
                 "SELECT status FROM company WHERE id = ? AND is_deleted = 0", tenantId
             );
