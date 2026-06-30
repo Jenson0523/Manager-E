@@ -45,8 +45,9 @@ public class UserInfoController {
             String.class, userId
         );
 
-        List<UserInfoVO.RouteVO> routes = isSuperAdmin
-                ? buildSuperAdminRoutes() : buildCompanyRoutes(permissions);
+        boolean isPlatformTier = tenantId != null && tenantId == 0L;
+        List<UserInfoVO.RouteVO> routes = isPlatformTier
+                ? buildPlatformRoutes(permissions) : buildCompanyRoutes(permissions);
 
         return Result.ok(UserInfoVO.builder()
                 .userId(userId)
@@ -64,13 +65,20 @@ public class UserInfoController {
                 .build());
     }
 
-    private List<UserInfoVO.RouteVO> buildSuperAdminRoutes() {
-        return List.of(
-            route("/dashboard", "工作台"),
-            route("/admin/companies", "企业管理"),
-            route("/admin/audit-logs", "操作日志"),
-            route("/admin/system-config", "系统设置")
-        );
+    private List<UserInfoVO.RouteVO> buildPlatformRoutes(List<String> permissions) {
+        boolean all = permissions != null && permissions.contains("*");
+        List<UserInfoVO.RouteVO> routes = new ArrayList<>();
+        if (all || has(permissions, "platform:dashboard:view")) routes.add(route("/dashboard", "工作台"));
+        if (all || has(permissions, "platform:company:view"))   routes.add(route("/admin/companies", "企业管理"));
+        if (all || has(permissions, "platform:user:view"))      routes.add(route("/admin/users", "平台人员"));
+        if (all || has(permissions, "platform:role:view"))      routes.add(route("/admin/roles", "平台角色"));
+        if (all || has(permissions, "platform:audit:view"))     routes.add(route("/admin/audit-logs", "操作日志"));
+        if (all || has(permissions, "platform:config:view"))    routes.add(route("/admin/system-config", "系统设置"));
+        return routes;
+    }
+
+    private boolean has(List<String> permissions, String code) {
+        return permissions != null && permissions.contains(code);
     }
 
     private List<UserInfoVO.RouteVO> buildCompanyRoutes(List<String> permissions) {
