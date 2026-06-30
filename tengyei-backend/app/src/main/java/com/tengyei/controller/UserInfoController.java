@@ -84,9 +84,9 @@ public class UserInfoController {
     private List<UserInfoVO.RouteVO> buildCompanyRoutes(List<String> permissions) {
         List<UserInfoVO.RouteVO> routes = new ArrayList<>();
         routes.add(route("/dashboard", "工作台"));
-        if (hasAny(permissions, "PERM_dept:view", "PERM_branch:view")) routes.add(route("/company/org", "组织管理"));
-        if (hasAny(permissions, "PERM_user:view")) routes.add(route("/company/users", "人员管理"));
-        if (hasAny(permissions, "PERM_role:view")) routes.add(route("/company/roles", "角色与权限"));
+        if (hasAny(permissions, "dept:view", "branch:view")) routes.add(route("/company/org", "组织管理"));
+        if (hasAny(permissions, "user:view")) routes.add(route("/company/users", "人员管理"));
+        if (hasAny(permissions, "role:view")) routes.add(route("/company/roles", "角色与权限"));
         return routes;
     }
 

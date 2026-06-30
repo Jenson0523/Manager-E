@@ -4,6 +4,7 @@ import com.tengyei.common.exception.BusinessException;
 import com.tengyei.common.response.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -29,6 +30,13 @@ public class GlobalExceptionHandler {
                     .findFirst().orElse("参数校验失败")
                 : "参数校验失败";
         return Result.fail(422, msg);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public Result<Void> handleAccessDenied(AccessDeniedException e) {
+        // @PreAuthorize 拒绝会抛 AccessDeniedException；返回 HTTP 200 + code 403，
+        // 与 SecurityConfig.accessDeniedHandler 一致，前端可优雅提示"无权限访问"而非"网络错误"
+        return Result.fail(403, "无权限访问");
     }
 
     @ExceptionHandler(Exception.class)
