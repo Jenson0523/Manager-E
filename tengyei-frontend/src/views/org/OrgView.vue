@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Edit, Delete, Folder, Document } from '@element-plus/icons-vue'
 import { deptApi, branchApi } from '@/api/org'
@@ -15,10 +15,19 @@ const treeProps = { label: 'name', children: 'children' }
 
 /* 负责人选择 - 公司人员列表 */
 const companyUsers = ref<{ id: number; label: string }[]>([])
+const userSearchKeyword = ref('')
+const allLoaded = ref(false)
 
-async function fetchCompanyUsers() {
+const filteredCompanyUsers = computed(() => {
+  if (!userSearchKeyword.value) return companyUsers.value
+  const kw = userSearchKeyword.value.toLowerCase()
+  return companyUsers.value.filter(u => u.label.toLowerCase().includes(kw))
+})
+
+async function preloadUsers() {
+  if (allLoaded.value) return
+  allLoaded.value = true
   try {
-    // 通过用户API获取本租户下的用户列表用于负责人选择
     const res = await fetch('/api/v1/users?page=1&size=1000', {
       headers: { Authorization: 'Bearer ' + auth.token },
     }).then(r => r.json())
@@ -29,8 +38,12 @@ async function fetchCompanyUsers() {
       }))
     }
   } catch {
-    // silently ignore - 人员列表可能失败
+    companyUsers.value = []
   }
+}
+
+function onLeaderDropdownVisible(visible: boolean) {
+  if (visible) preloadUsers()
 }
 
 const deptDialog = ref(false)
@@ -215,7 +228,6 @@ async function removeBranch(row: BranchVO) {
 onMounted(() => {
   fetchTree()
   fetchBranches()
-  fetchCompanyUsers()
 })
 </script>
 
@@ -327,13 +339,12 @@ onMounted(() => {
             v-model="deptForm.leaderId"
             clearable
             filterable
-            remote
-            :remote-method="fetchCompanyUsers"
             placeholder="搜索选择部门负责人（非必填）"
             style="width: 100%"
+            @visible-change="onLeaderDropdownVisible"
           >
             <el-option
-              v-for="u in companyUsers"
+              v-for="u in filteredCompanyUsers"
               :key="u.id"
               :label="u.label"
               :value="u.id"
@@ -422,6 +433,13 @@ onMounted(() => {
   border-radius: 6px;
   margin-bottom: 2px;
   padding-right: 8px !important;
+  transition: background-color 0.2s;
+}
+.dept-tree :deep(.el-tree-node__content:nth-child(even)) {
+  background-color: #fafbfc;
+}
+.dept-tree :deep(.el-tree-node__content:nth-child(even):hover) {
+  background-color: #edf2fc;
 }
 .dept-tree :deep(.el-tree-node__content:hover) {
   background-color: #f0f5ff;
