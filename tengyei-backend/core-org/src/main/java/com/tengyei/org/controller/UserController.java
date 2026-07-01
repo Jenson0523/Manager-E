@@ -115,7 +115,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/reset-password")
-    @PreAuthorize("hasAuthority('PERM_user:reset_pwd')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:reset_pwd')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "重置人员密码")
     public Result<Void> resetPassword(@PathVariable(name="id") Long id, @RequestBody Map<String, String> body) {
         userService.resetPassword(id, body.get("password"));

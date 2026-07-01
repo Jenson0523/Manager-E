@@ -67,4 +67,12 @@ public class CompanyController {
         companyService.delete(id);
         return Result.ok();
     }
+
+    @PutMapping("/{id}/reset-admin-password")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:edit')")
+    @Auditable(module = "企业管理", actionType = "UPDATE", description = "重置企业管理员密码")
+    public Result<Void> resetAdminPassword(@PathVariable("id") Long id, @RequestBody Map<String, String> body) {
+        companyService.resetAdminPassword(id, body.get("password"));
+        return Result.ok();
+    }
 }

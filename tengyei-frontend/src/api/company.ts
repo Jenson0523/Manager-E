@@ -12,4 +12,6 @@ export const companyApi = {
   changeStatus: (id: number, status: number) =>
     request.put<never, void>(`/v1/companies/${id}/status`, { status }),
   delete: (id: number) => request.delete<never, void>(`/v1/companies/${id}`),
+  resetAdminPassword: (id: number, password: string) =>
+    request.put<never, void>(`/v1/companies/${id}/reset-admin-password`, { password }),
 }

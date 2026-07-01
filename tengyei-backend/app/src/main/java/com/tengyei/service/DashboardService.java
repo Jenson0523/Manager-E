@@ -25,7 +25,7 @@ public class DashboardService {
             data.put("companyTodayNew", count(
                 "SELECT COUNT(*) FROM company WHERE is_deleted = 0 AND created_at >= CURRENT_DATE"));
             data.put("userTotal", count(
-                "SELECT COUNT(*) FROM user WHERE is_deleted = 0 AND is_super_admin = 0"));
+                "SELECT COUNT(*) FROM `user` WHERE is_deleted = 0 AND is_super_admin = 0"));
             List<Map<String, Object>> recent = jdbcTemplate.queryForList(
                 "SELECT id, company_no AS companyNo, full_name AS fullName, short_name AS shortName, " +
                 "status, created_at AS createdAt " +
@@ -39,10 +39,10 @@ public class DashboardService {
             data.put("branchCount", count(
                 "SELECT COUNT(*) FROM branch WHERE is_deleted = 0 AND tenant_id = ?", tenantId));
             data.put("userCount", count(
-                "SELECT COUNT(*) FROM user WHERE is_deleted = 0 AND is_super_admin = 0 AND tenant_id = ?",
+                "SELECT COUNT(*) FROM `user` WHERE is_deleted = 0 AND is_super_admin = 0 AND tenant_id = ?",
                 tenantId));
             data.put("todayLoginCount", count(
-                "SELECT COUNT(*) FROM user WHERE is_deleted = 0 AND tenant_id = ? " +
+                "SELECT COUNT(*) FROM `user` WHERE is_deleted = 0 AND tenant_id = ? " +
                 "AND last_login_at >= CURRENT_DATE", tenantId));
         }
         return data;

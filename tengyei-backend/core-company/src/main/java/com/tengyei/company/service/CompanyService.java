@@ -168,6 +168,30 @@ public class CompanyService {
         // 逻辑删除
         companyMapper.deleteById(id);
     }
+
+    public void resetAdminPassword(Long companyId, String newPassword) {
+        Company c = companyMapper.selectById(companyId);
+        if (c == null) throw new BusinessException(404, "企业不存在");
+        if (!StringUtils.hasText(newPassword)) throw new BusinessException(422, "新密码不能为空");
+        if (newPassword.length() < 8 || newPassword.length() > 20)
+            throw new BusinessException(422, "密码须为 8-20 位");
+        // Find the admin user by tenant_id = companyId (first non-super-admin, non-deleted user)
+        Long adminUserId = null;
+        try {
+            adminUserId = jdbcTemplate.queryForObject(
+                "SELECT id FROM `user` WHERE tenant_id = ? AND is_super_admin = 0 AND is_deleted = 0 LIMIT 1",
+                Long.class, companyId);
+        } catch (Exception e) {
+            // fall through
+        }
+        if (adminUserId == null) throw new BusinessException(404, "未找到该企业的管理员账号");
+        String encoded = passwordEncoder.encode(newPassword);
+        jdbcTemplate.update(
+            "UPDATE `user` SET password = ?, pwd_reset_required = 1, login_fail_count = 0, locked_until = NULL " +
+            "WHERE id = ?",
+            encoded, adminUserId);
+        log.info("Admin password reset for company {} user {}", companyId, adminUserId);
+    }
 }
 
 

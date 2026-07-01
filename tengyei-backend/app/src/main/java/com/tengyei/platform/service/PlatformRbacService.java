@@ -96,7 +96,7 @@ public class PlatformRbacService {
 
     public List<PlatformUserVO> listUsers(String keyword) {
         StringBuilder sql = new StringBuilder(
-            "SELECT id, username, real_name, phone, email, status, is_super_admin FROM user " +
+            "SELECT id, username, real_name, phone, email, status, is_super_admin FROM `user` " +
             "WHERE tenant_id = 0 AND is_deleted = 0");
         List<Object> params = new ArrayList<>();
         if (keyword != null && !keyword.isBlank()) {
@@ -125,16 +125,16 @@ public class PlatformRbacService {
         if (dto.getPassword() == null || dto.getPassword().isBlank())
             throw new BusinessException(422, "初始密码不能为空");
         Long dup = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM user WHERE username = ? AND is_deleted = 0", Long.class, dto.getUsername());
+            "SELECT COUNT(*) FROM `user` WHERE username = ? AND is_deleted = 0", Long.class, dto.getUsername());
         if (dup != null && dup > 0) throw new BusinessException(409, "账号已存在");
         jdbc.update(
-            "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, email, " +
+            "INSERT INTO `user` (tenant_id, user_no, username, password, real_name, phone, email, " +
             "is_super_admin, status, pwd_reset_required, login_fail_count, is_deleted, created_at, updated_at) " +
             "VALUES (0, ?, ?, ?, ?, ?, ?, 0, 1, 1, 0, 0, NOW(), NOW())",
             "P-" + System.nanoTime(), dto.getUsername(), passwordEncoder.encode(dto.getPassword()),
             dto.getRealName(), dto.getPhone(), dto.getEmail());
         Long userId = jdbc.queryForObject(
-            "SELECT id FROM user WHERE username = ? AND is_deleted = 0", Long.class, dto.getUsername());
+            "SELECT id FROM `user` WHERE username = ? AND is_deleted = 0", Long.class, dto.getUsername());
         replaceUserRoles(userId, dto.getRoleIds());
         return userId;
     }
@@ -142,26 +142,26 @@ public class PlatformRbacService {
     @Transactional
     public void updateUser(Long id, PlatformUserDTO dto) {
         requirePlatformUser(id);
-        jdbc.update("UPDATE user SET real_name = ?, phone = ?, email = ? WHERE id = ? AND tenant_id = 0",
+        jdbc.update("UPDATE `user` SET real_name = ?, phone = ?, email = ? WHERE id = ? AND tenant_id = 0",
             dto.getRealName(), dto.getPhone(), dto.getEmail(), id);
         if (dto.getRoleIds() != null) replaceUserRoles(id, dto.getRoleIds());
     }
 
     public void deleteUser(Long id) {
         requireNonOwner(id, "内置账号不可删除");
-        jdbc.update("UPDATE user SET is_deleted = 1 WHERE id = ? AND tenant_id = 0", id);
+        jdbc.update("UPDATE `user` SET is_deleted = 1 WHERE id = ? AND tenant_id = 0", id);
     }
 
     public void changeUserStatus(Long id, Integer status) {
         requireNonOwner(id, "内置账号不可停用");
         if (status == null || (status != 0 && status != 1)) throw new BusinessException(422, "状态值无效");
-        jdbc.update("UPDATE user SET status = ? WHERE id = ? AND tenant_id = 0", status, id);
+        jdbc.update("UPDATE `user` SET status = ? WHERE id = ? AND tenant_id = 0", status, id);
     }
 
     public void resetUserPassword(Long id, String password) {
         requirePlatformUser(id);
         if (!PasswordRule.isValid(password)) throw new BusinessException(422, PasswordRule.MESSAGE);
-        jdbc.update("UPDATE user SET password = ? WHERE id = ? AND tenant_id = 0",
+        jdbc.update("UPDATE `user` SET password = ? WHERE id = ? AND tenant_id = 0",
             passwordEncoder.encode(password), id);
     }
 
@@ -188,14 +188,14 @@ public class PlatformRbacService {
 
     private void requirePlatformUser(Long id) {
         Long c = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM user WHERE id = ? AND tenant_id = 0 AND is_deleted = 0", Long.class, id);
+            "SELECT COUNT(*) FROM `user` WHERE id = ? AND tenant_id = 0 AND is_deleted = 0", Long.class, id);
         if (c == null || c == 0) throw new BusinessException(404, "平台账号不存在");
     }
 
     private void requireNonOwner(Long id, String msg) {
         requirePlatformUser(id);
         Integer owner = jdbc.queryForObject(
-            "SELECT is_super_admin FROM user WHERE id = ?", Integer.class, id);
+            "SELECT is_super_admin FROM `user` WHERE id = ?", Integer.class, id);
         if (owner != null && owner == 1) throw new BusinessException(409, msg);
     }
 }

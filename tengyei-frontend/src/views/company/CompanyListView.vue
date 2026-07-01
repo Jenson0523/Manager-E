@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { companyApi } from '@/api/company'
 import type { CompanyVO, CompanyCreateDTO, CompanyUpdateDTO } from '@/types/company'
-import { strongPasswordRule } from '@/utils/password'
+import { strongPasswordRule, PASSWORD_TIP } from '@/utils/password'
 
 const loading = ref(false)
 const list = ref<CompanyVO[]>([])
@@ -145,6 +145,26 @@ async function deleteCompany(row: CompanyVO) {
   fetchList()
 }
 
+async function resetAdminPassword(row: CompanyVO) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `为「${row.shortName}」的管理员「${row.adminUsername || '—'}」设置新密码`,
+      '重置管理员密码',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,20}$/,
+        inputErrorMessage: PASSWORD_TIP,
+        inputType: 'password',
+      }
+    )
+    await companyApi.resetAdminPassword(row.id, value)
+    ElMessage.success('管理员密码已重置')
+  } catch {
+    // cancelled
+  }
+}
+
 const statusText = (s: number) => (s === 1 ? '启用' : s === 2 ? '停用' : '待激活')
 const statusType = (s: number): 'success' | 'info' | 'warning' => (s === 1 ? 'success' : s === 2 ? 'info' : 'warning')
 
@@ -198,12 +218,13 @@ onMounted(fetchList)
         </template>
       </el-table-column>
       <el-table-column prop="createdAt" label="创建时间" width="180" />
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row as CompanyVO)">编辑</el-button>
           <el-button link type="primary" @click="toggleStatus(row as CompanyVO)">
             {{ (row as CompanyVO).status === 1 ? '停用' : '启用' }}
           </el-button>
+          <el-button link type="warning" @click="resetAdminPassword(row as CompanyVO)">重置密码</el-button>
           <el-button link type="danger" @click="deleteCompany(row as CompanyVO)">删除</el-button>
         </template>
       </el-table-column>
