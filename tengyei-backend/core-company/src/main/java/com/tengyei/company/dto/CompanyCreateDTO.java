@@ -3,6 +3,8 @@ package com.tengyei.company.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.time.LocalDate;
+
 @Data
 public class CompanyCreateDTO {
     @NotBlank(message = "企业全称不能为空")
@@ -10,6 +12,7 @@ public class CompanyCreateDTO {
     @NotBlank(message = "企业简称不能为空")
     private String shortName;
     private String creditCode;
+    private LocalDate expireDate;
     @NotBlank(message = "管理员姓名不能为空")
     private String adminName;
     @NotBlank(message = "管理员电话不能为空")

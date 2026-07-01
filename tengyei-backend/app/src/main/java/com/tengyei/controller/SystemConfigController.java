@@ -34,7 +34,7 @@ public class SystemConfigController {
     @PutMapping("/{key}")
     @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_setting:edit')")
     @Auditable(module = "系统配置", actionType = "UPDATE", description = "修改系统配置")
-    public Result<Void> update(@PathVariable String key, @Valid @RequestBody ConfigValueDTO dto) {
+    public Result<Void> update(@PathVariable(name="key") String key, @Valid @RequestBody ConfigValueDTO dto) {
         Long tenantId = TenantContext.isSuperAdmin() ? 0L : TenantContext.getTenantId();
         int affected = jdbcTemplate.update(
             "UPDATE system_config SET config_value = ? WHERE tenant_id = ? AND config_key = ?",

@@ -79,8 +79,10 @@ public class DeptService {
         Long userId = TenantContext.getUserId();
         if (userId == null) return null;
         try {
-            return jdbcTemplate.queryForObject(
-                "SELECT dept_id FROM `user` WHERE id = ?", Long.class, userId);
+            List<Long> ids = jdbcTemplate.queryForList(
+                "SELECT dept_id FROM user_dept WHERE user_id = ? ORDER BY is_primary DESC LIMIT 1",
+                Long.class, userId);
+            return ids.isEmpty() ? null : ids.get(0);
         } catch (Exception e) {
             return null;
         }

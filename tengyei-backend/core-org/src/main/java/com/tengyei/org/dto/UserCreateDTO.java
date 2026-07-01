@@ -17,6 +17,7 @@ public class UserCreateDTO {
     @NotBlank(message = "初始密码不能为空")
     private String password;
     private Long deptId;
+    private List<Long> deptIds;
     private Long branchId;
     private List<Long> roleIds;
 }

@@ -15,6 +15,7 @@ const createFormRef = ref<FormInstance>()
 const createForm = reactive<CompanyCreateDTO>({
   fullName: '',
   shortName: '',
+  expireDate: '',
   adminName: '',
   adminPhone: '',
   adminUsername: '',
@@ -34,6 +35,7 @@ const editVisible = ref(false)
 const editFormRef = ref<FormInstance>()
 const editingId = ref<number | null>(null)
 const editForm = reactive<CompanyUpdateDTO>({
+  expireDate: '',
   fullName: '',
   shortName: '',
   creditCode: '',
@@ -69,7 +71,7 @@ function onSearch() {
 
 function openCreate() {
   Object.assign(createForm, {
-    fullName: '', shortName: '', adminName: '',
+    fullName: '', shortName: '', creditCode: '', expireDate: '', adminName: '',
     adminPhone: '', adminUsername: '', adminPassword: '',
   })
   createVisible.value = true
@@ -93,6 +95,7 @@ function openEdit(row: CompanyVO) {
     adminName: row.adminName,
     adminPhone: row.adminPhone,
     adminEmail: row.adminEmail ?? '',
+    expireDate: row.expireDate ?? '',
     remark: row.remark ?? '',
   })
   editVisible.value = true
@@ -133,6 +136,19 @@ async function deleteCompany(row: CompanyVO) {
 const statusText = (s: number) => (s === 1 ? '启用' : s === 2 ? '停用' : '待激活')
 const statusType = (s: number): 'success' | 'info' | 'warning' => (s === 1 ? 'success' : s === 2 ? 'info' : 'warning')
 
+/* 合作到期预警 */
+const expireWarn = (dateStr?: string) => {
+  if (!dateStr) return { text: '-', type: 'info' }
+  const exp = new Date(dateStr)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diff = Math.floor((exp.getTime() - today.getTime()) / 86400000)
+  if (diff < 0) return { text: '已过期', type: 'danger' }
+  if (diff <= 30) return { text: diff + '天后到期', type: 'warning' }
+  if (diff <= 90) return { text: diff + '天后到期', type: '' }
+  return { text: dateStr, type: 'success' }
+}
+
 onMounted(fetchList)
 </script>
 
@@ -156,9 +172,17 @@ onMounted(fetchList)
       <el-table-column prop="fullName" label="企业全称" min-width="200" />
       <el-table-column prop="adminName" label="联系人" width="120" />
       <el-table-column prop="adminPhone" label="联系电话" width="140" />
+      <el-table-column prop="adminUsername" label="管理人员账号" width="130" />
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="statusType((row as CompanyVO).status)">{{ statusText((row as CompanyVO).status) }}</el-tag>
+        </template>
+      </el-table-column>
+            <el-table-column label="合作到期时间" width="140">
+        <template #default="{ row }">
+          <el-tag :type="expireWarn((row as CompanyVO).expireDate).type as any" effect="plain">
+            {{ expireWarn((row as CompanyVO).expireDate).text }}
+          </el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="createdAt" label="创建时间" width="180" />
@@ -190,6 +214,12 @@ onMounted(fetchList)
         </el-form-item>
         <el-form-item label="企业简称" prop="shortName">
           <el-input v-model="createForm.shortName" />
+        </el-form-item>
+        <el-form-item label="统一社会信用代码">
+          <el-input v-model="createForm.creditCode" placeholder="统一社会信用代码" />
+        </el-form-item>
+        <el-form-item label="合作到期时间">
+          <el-date-picker v-model="createForm.expireDate" type="date" placeholder="选择到期日期" style="width: 100%" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item label="联系人姓名" prop="adminName">
           <el-input v-model="createForm.adminName" />
@@ -230,6 +260,9 @@ onMounted(fetchList)
         </el-form-item>
         <el-form-item label="联系邮箱">
           <el-input v-model="editForm.adminEmail" />
+        </el-form-item>
+        <el-form-item label="合作到期时间">
+          <el-date-picker v-model="editForm.expireDate" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="editForm.remark" type="textarea" :rows="2" />

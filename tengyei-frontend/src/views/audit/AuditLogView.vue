@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { auditApi, loginLogApi, type AuditLogVO, type LoginLogVO } from '@/api/audit'
 
 const activeTab = ref('audit')
@@ -74,6 +74,21 @@ async function exportLogin() {
 }
 
 onMounted(fetchList)
+
+/* auto-refresh every 10 seconds */
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+function startRefresh() {
+  stopRefresh()
+  refreshTimer = setInterval(() => {
+    if (activeTab.value === 'audit') fetchList()
+    else fetchLoginList()
+  }, 10000)
+}
+function stopRefresh() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+}
+startRefresh()
+onUnmounted(stopRefresh)
 
 /* ---------- 登录日志 ---------- */
 const loginLoading = ref(false)
@@ -278,3 +293,4 @@ function handleTabChange(tab: string | number) {
   justify-content: flex-end;
 }
 </style>
+

@@ -131,7 +131,7 @@ public class AuthService {
                 "JOIN user_role ur ON ur.role_id = rp.role_id " +
                 "WHERE ur.user_id = ? AND p.status = 1",
                 String.class, userId
-            );
+            ).stream().map(code -> "PERM_" + code).toList();
             String scope = jdbcTemplate.queryForObject(
                 "SELECT MIN(r.data_scope) FROM role r " +
                 "JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
@@ -197,7 +197,7 @@ public class AuthService {
             "JOIN user_role ur ON ur.role_id = rp.role_id " +
             "WHERE ur.user_id = ? AND p.status = 1",
             String.class, userId
-        );
+        ).stream().map(code -> "PERM_" + code).toList();
         String realName = jwtService.getRealName(token);
         return jwtService.generate(tenantId, userId, branchId, roleCodes, permissions, dataScope, realName);
     }

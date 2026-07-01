@@ -19,6 +19,8 @@ public class UserExportVO {
 
     @ExcelProperty("部门")
     private String deptName;
+    @ExcelProperty("多部门")
+    private String deptNames;
 
     @ExcelProperty("角色")
     private String roles;

@@ -68,12 +68,12 @@ public class UserInfoController {
     private List<UserInfoVO.RouteVO> buildPlatformRoutes(List<String> permissions) {
         boolean all = permissions != null && permissions.contains("*");
         List<UserInfoVO.RouteVO> routes = new ArrayList<>();
-        if (all || has(permissions, "platform:dashboard:view")) routes.add(route("/dashboard", "工作台"));
-        if (all || has(permissions, "platform:company:view"))   routes.add(route("/admin/companies", "企业管理"));
-        if (all || has(permissions, "platform:user:view"))      routes.add(route("/admin/users", "平台人员"));
-        if (all || has(permissions, "platform:role:view"))      routes.add(route("/admin/roles", "平台角色"));
-        if (all || has(permissions, "platform:audit:view"))     routes.add(route("/admin/audit-logs", "操作日志"));
-        if (all || has(permissions, "platform:config:view"))    routes.add(route("/admin/system-config", "系统设置"));
+        if (all || has(permissions, "PERM_platform:dashboard:view")) routes.add(route("/dashboard", "工作台"));
+        if (all || has(permissions, "PERM_platform:company:view"))   routes.add(route("/admin/companies", "企业管理"));
+        if (all || has(permissions, "PERM_platform:user:view"))      routes.add(route("/admin/users", "平台人员"));
+        if (all || has(permissions, "PERM_platform:role:view"))      routes.add(route("/admin/roles", "平台角色"));
+        if (all || has(permissions, "PERM_platform:audit:view"))     routes.add(route("/admin/audit-logs", "操作日志"));
+        if (all || has(permissions, "PERM_platform:config:view"))    routes.add(route("/admin/system-config", "系统设置"));
         return routes;
     }
 

@@ -25,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,12 +40,12 @@ public class UserService {
         LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
         qw.eq(User::getIsSuperAdmin, 0);
 
-        // 租户隔离：非超管只能看本租户
+        // Tenant isolation
         if (!TenantContext.isSuperAdmin()) {
             qw.eq(User::getTenantId, TenantContext.getTenantId());
         }
 
-        // 数据级权限过滤
+        // Data scope filter
         String scope = TenantContext.getDataScope();
         if ("branch".equals(scope)) {
             Long branchId = TenantContext.getBranchId();
@@ -52,10 +53,25 @@ public class UserService {
                 qw.eq(User::getBranchId, branchId);
             }
         } else if ("dept".equals(scope)) {
-            Long userDeptId = getUserDeptId();
-            if (userDeptId != null) {
-                Set<Long> deptIds = collectSubDeptIds(userDeptId);
-                qw.in(User::getDeptId, deptIds);
+            Set<Long> userDeptIds = getCurrentUserDeptIds();
+            if (!userDeptIds.isEmpty()) {
+                Set<Long> allDeptIds = new LinkedHashSet<>();
+                for (Long did : userDeptIds) {
+                    allDeptIds.addAll(collectSubDeptIds(did));
+                }
+                if (deptId != null) {
+                    // Filter by selected dept, but only within allowed scope
+                    if (allDeptIds.contains(deptId)) {
+                        qw.inSql(User::getId,
+                            "SELECT user_id FROM user_dept WHERE dept_id = " + deptId);
+                    } else {
+                        return PageResult.of(List.of(), 0, page, size);
+                    }
+                } else {
+                    String inClause = allDeptIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+                    qw.inSql(User::getId,
+                        "SELECT user_id FROM user_dept WHERE dept_id IN (" + inClause + ")");
+                }
             }
         } else if ("self".equals(scope)) {
             qw.eq(User::getId, TenantContext.getUserId());
@@ -66,7 +82,13 @@ public class UserService {
                     .or().like(User::getRealName, keyword)
                     .or().like(User::getPhone, keyword));
         }
-        if (deptId != null) qw.eq(User::getDeptId, deptId);
+
+        // deptId filter for non-dept scope
+        if (deptId != null && !"dept".equals(scope)) {
+            qw.inSql(User::getId,
+                "SELECT user_id FROM user_dept WHERE dept_id = " + deptId);
+        }
+
         qw.orderByDesc(User::getId);
         Page<User> result = userMapper.selectPage(new Page<>(page, size), qw);
 
@@ -74,15 +96,26 @@ public class UserService {
         for (User u : result.getRecords()) {
             List<Long> roleIds = jdbcTemplate.queryForList(
                 "SELECT role_id FROM user_role WHERE user_id = ?", Long.class, u.getId());
+            if (roleId != null && !roleIds.contains(roleId)) continue;
+
             List<String> roleNames = roleIds.isEmpty() ? List.of() :
                 jdbcTemplate.queryForList(
                     "SELECT name FROM role WHERE id IN (" +
                     String.join(",", roleIds.stream().map(String::valueOf).toList()) + ")",
                     String.class);
-            if (roleId != null && !roleIds.contains(roleId)) continue;
+
+            List<Long> deptIds = jdbcTemplate.queryForList(
+                "SELECT dept_id FROM user_dept WHERE user_id = ? ORDER BY is_primary DESC", Long.class, u.getId());
+            List<String> deptNames = deptIds.isEmpty() ? List.of() :
+                jdbcTemplate.queryForList(
+                    "SELECT name FROM dept WHERE id IN (" +
+                    String.join(",", deptIds.stream().map(String::valueOf).toList()) + ")",
+                    String.class);
+
             vos.add(UserVO.builder()
                     .id(u.getId()).username(u.getUsername()).realName(u.getRealName())
                     .phone(u.getPhone()).email(u.getEmail()).deptId(u.getDeptId())
+                    .deptIds(deptIds).deptNames(deptNames)
                     .branchId(u.getBranchId()).status(u.getStatus())
                     .roleIds(roleIds).roleNames(roleNames).build());
         }
@@ -104,16 +137,20 @@ public class UserService {
         u.setRealName(dto.getRealName());
         u.setPhone(dto.getPhone());
         u.setEmail(dto.getEmail());
-        u.setDeptId(dto.getDeptId());
+
+        Long primaryDeptId = resolvePrimaryDeptId(dto.getDeptId(), dto.getDeptIds());
+        u.setDeptId(primaryDeptId);
         u.setBranchId(dto.getBranchId());
         u.setIsSuperAdmin(0);
         u.setStatus(1);
         u.setPwdResetRequired(1);
         u.setLoginFailCount(0);
-        u.setUserNo("PENDING"); // temporary placeholder; NOT NULL constraint
+        u.setUserNo("PENDING");
         userMapper.insert(u);
         u.setUserNo("U" + tenantId + "-" + String.format("%04d", u.getId()));
         userMapper.updateById(u);
+
+        saveUserDepts(u.getId(), dto.getDeptIds(), dto.getDeptId());
         assignRoles(u.getId(), dto.getRoleIds());
         return u.getId();
     }
@@ -123,9 +160,38 @@ public class UserService {
         u.setRealName(dto.getRealName());
         u.setPhone(dto.getPhone());
         u.setEmail(dto.getEmail());
-        u.setDeptId(dto.getDeptId());
+        Long primaryDeptId = resolvePrimaryDeptId(dto.getDeptId(), dto.getDeptIds());
+        u.setDeptId(primaryDeptId);
         u.setBranchId(dto.getBranchId());
         userMapper.updateById(u);
+        saveUserDepts(id, dto.getDeptIds(), dto.getDeptId());
+    }
+
+    private Long resolvePrimaryDeptId(Long explicitDeptId, List<Long> deptIds) {
+        if (explicitDeptId != null) return explicitDeptId;
+        if (deptIds != null && !deptIds.isEmpty()) return deptIds.get(0);
+        return null;
+    }
+
+    private void saveUserDepts(Long userId, List<Long> deptIds, Long primaryDeptId) {
+        jdbcTemplate.update("DELETE FROM user_dept WHERE user_id = ?", userId);
+        if (deptIds == null || deptIds.isEmpty()) {
+            if (primaryDeptId != null) {
+                jdbcTemplate.update(
+                    "INSERT INTO user_dept (user_id, dept_id, is_primary, created_at) VALUES (?, ?, 1, NOW())",
+                    userId, primaryDeptId);
+            }
+            return;
+        }
+        List<Long> distinct = new ArrayList<>(new LinkedHashSet<>(deptIds));
+        Long primary = primaryDeptId != null && distinct.contains(primaryDeptId)
+                ? primaryDeptId : distinct.get(0);
+        for (Long did : distinct) {
+            int isPrimary = did.equals(primary) ? 1 : 0;
+            jdbcTemplate.update(
+                "INSERT INTO user_dept (user_id, dept_id, is_primary, created_at) VALUES (?, ?, ?, NOW())",
+                userId, did, isPrimary);
+        }
     }
 
     public List<UserExportVO> export(String keyword, Long deptId) {
@@ -141,7 +207,6 @@ public class UserService {
             params.add(TenantContext.getTenantId());
         }
 
-        // 数据级权限过滤
         String scope = TenantContext.getDataScope();
         if ("branch".equals(scope)) {
             Long branchId = TenantContext.getBranchId();
@@ -150,11 +215,15 @@ public class UserService {
                 params.add(branchId);
             }
         } else if ("dept".equals(scope)) {
-            Long userDeptId = getUserDeptId();
-            if (userDeptId != null) {
-                Set<Long> deptIds = collectSubDeptIds(userDeptId);
-                String inClause = String.join(",", deptIds.stream().map(String::valueOf).toList());
-                sql.append(" AND u.dept_id IN (").append(inClause).append(")");
+            Set<Long> userDeptIds = getCurrentUserDeptIds();
+            if (!userDeptIds.isEmpty()) {
+                Set<Long> allDeptIds = new LinkedHashSet<>();
+                for (Long did : userDeptIds) {
+                    allDeptIds.addAll(collectSubDeptIds(did));
+                }
+                String inClause = allDeptIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+                sql.append(" AND u.id IN (SELECT user_id FROM user_dept WHERE dept_id IN (")
+                   .append(inClause).append("))");
             }
         } else if ("self".equals(scope)) {
             sql.append(" AND u.id = ?");
@@ -167,7 +236,7 @@ public class UserService {
             params.add(kw); params.add(kw); params.add(kw);
         }
         if (deptId != null) {
-            sql.append(" AND u.dept_id = ?");
+            sql.append(" AND u.id IN (SELECT user_id FROM user_dept WHERE dept_id = ?)");
             params.add(deptId);
         }
         sql.append(" ORDER BY u.id LIMIT 5000");
@@ -179,6 +248,9 @@ public class UserService {
             List<String> roleNames = jdbcTemplate.queryForList(
                 "SELECT r.name FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
                 String.class, userId);
+            List<String> deptNames = jdbcTemplate.queryForList(
+                "SELECT d.name FROM dept d JOIN user_dept ud ON ud.dept_id = d.id WHERE ud.user_id = ?",
+                String.class, userId);
 
             UserExportVO vo = new UserExportVO();
             vo.setRealName((String) row.get("real_name"));
@@ -186,6 +258,7 @@ public class UserService {
             vo.setPhone((String) row.get("phone"));
             vo.setEmail((String) row.get("email"));
             vo.setDeptName((String) row.get("dept_name"));
+            vo.setDeptNames(String.join(", ", deptNames));
             vo.setRoles(String.join(", ", roleNames));
             vo.setStatus(Integer.valueOf(1).equals(row.get("status")) ? "启用" : "停用");
             Object ca = row.get("created_at");
@@ -258,7 +331,6 @@ public class UserService {
         u.setPwdResetRequired(1);
         u.setLoginFailCount(0);
         userMapper.updateById(u);
-        // updateById ignores null fields, so clear locked_until explicitly
         jdbcTemplate.update("UPDATE `user` SET locked_until = NULL WHERE id = ?", id);
     }
 
@@ -268,19 +340,14 @@ public class UserService {
         return u;
     }
 
-    /**
-     * 获取当前用户的部门ID
-     */
-    private Long getUserDeptId() {
+    private Set<Long> getCurrentUserDeptIds() {
         Long userId = TenantContext.getUserId();
-        if (userId == null) return null;
-        User u = userMapper.selectById(userId);
-        return u != null ? u.getDeptId() : null;
+        if (userId == null) return Set.of();
+        List<Long> ids = jdbcTemplate.queryForList(
+            "SELECT dept_id FROM user_dept WHERE user_id = ?", Long.class, userId);
+        return new LinkedHashSet<>(ids);
     }
 
-    /**
-     * 递归收集部门及其所有子部门ID
-     */
     private Set<Long> collectSubDeptIds(Long parentId) {
         Set<Long> ids = new LinkedHashSet<>();
         ids.add(parentId);
