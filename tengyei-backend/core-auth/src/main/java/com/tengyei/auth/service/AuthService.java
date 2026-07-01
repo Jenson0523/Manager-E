@@ -94,11 +94,17 @@ public class AuthService {
         // Check company status only for company-tier users (tenant_id != 0)
         if (!isSuperAdmin && tenantId != null && tenantId != 0L) {
             List<Map<String, Object>> companyRows = jdbcTemplate.queryForList(
-                "SELECT status FROM company WHERE id = ? AND is_deleted = 0", tenantId
+                "SELECT status, expire_date FROM company WHERE id = ? AND is_deleted = 0", tenantId
             );
             if (companyRows.isEmpty() || toInt(companyRows.get(0).get("status")) != 1) {
                 writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 0, "所属企业已停用");
                 throw new BusinessException(423, "所属企业已停用，请联系平台管理员");
+            }
+            Object expireObj = companyRows.get(0).get("expire_date");
+            if (expireObj instanceof java.sql.Date sqlDate
+                && sqlDate.toLocalDate().isBefore(java.time.LocalDate.now())) {
+                writeLoginLog(userId, tenantId, req.getUsername(), clientIp, 0, "所属企业已到期");
+                throw new BusinessException(423, "所属企业使用期限已到期，请联系平台管理员");
             }
         }
 
@@ -131,7 +137,7 @@ public class AuthService {
                 "JOIN user_role ur ON ur.role_id = rp.role_id " +
                 "WHERE ur.user_id = ? AND p.status = 1",
                 String.class, userId
-            ).stream().map(code -> "PERM_" + code).toList();
+            );
             String scope = jdbcTemplate.queryForObject(
                 "SELECT MIN(r.data_scope) FROM role r " +
                 "JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
@@ -197,7 +203,7 @@ public class AuthService {
             "JOIN user_role ur ON ur.role_id = rp.role_id " +
             "WHERE ur.user_id = ? AND p.status = 1",
             String.class, userId
-        ).stream().map(code -> "PERM_" + code).toList();
+        );
         String realName = jwtService.getRealName(token);
         return jwtService.generate(tenantId, userId, branchId, roleCodes, permissions, dataScope, realName);
     }
