@@ -1,5 +1,6 @@
 package com.tengyei.company.dto;
 
+import com.tengyei.common.validation.CreditCode;
 import com.tengyei.common.validation.StrongPassword;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -12,6 +13,7 @@ public class CompanyCreateDTO {
     private String fullName;
     @NotBlank(message = "企业简称不能为空")
     private String shortName;
+    @CreditCode
     private String creditCode;
     private LocalDate expireDate;
     @NotBlank(message = "管理员姓名不能为空")

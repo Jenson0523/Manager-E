@@ -10,6 +10,15 @@ const list = ref<CompanyVO[]>([])
 const total = ref(0)
 const query = reactive({ page: 1, size: 20, keyword: '' })
 
+const CREDIT_CODE_PATTERN = /^[0-9A-HJ-NP-RT-UW-Y]{2}[0-9]{6}[0-9A-HJ-NP-RT-UW-Y]{10}$/
+const creditCodeRule = {
+  validator: (_rule: unknown, value: string, callback: (err?: Error) => void) => {
+    if (!value || CREDIT_CODE_PATTERN.test(value)) return callback()
+    callback(new Error('统一社会信用代码格式不正确（应为18位）'))
+  },
+  trigger: 'blur',
+}
+
 /* ---- 新增 ---- */
 const createVisible = ref(false)
 const createFormRef = ref<FormInstance>()
@@ -25,6 +34,7 @@ const createForm = reactive<CompanyCreateDTO>({
 const createRules: FormRules = {
   fullName: [{ required: true, message: '请输入企业全称', trigger: 'blur' }],
   shortName: [{ required: true, message: '请输入企业简称', trigger: 'blur' }],
+  creditCode: [creditCodeRule],
   adminName: [{ required: true, message: '请输入管理员姓名', trigger: 'blur' }],
   adminPhone: [{ required: true, message: '请输入管理员电话', trigger: 'blur' }],
   adminUsername: [{ required: true, message: '请输入管理员账号', trigger: 'blur' }],
@@ -48,6 +58,7 @@ const editForm = reactive<CompanyUpdateDTO>({
 const editRules: FormRules = {
   fullName: [{ required: true, message: '请输入企业全称', trigger: 'blur' }],
   shortName: [{ required: true, message: '请输入企业简称', trigger: 'blur' }],
+  creditCode: [creditCodeRule],
 }
 
 async function fetchList() {
@@ -216,7 +227,7 @@ onMounted(fetchList)
         <el-form-item label="企业简称" prop="shortName">
           <el-input v-model="createForm.shortName" />
         </el-form-item>
-        <el-form-item label="统一社会信用代码">
+        <el-form-item label="统一社会信用代码" prop="creditCode">
           <el-input v-model="createForm.creditCode" placeholder="统一社会信用代码" />
         </el-form-item>
         <el-form-item label="合作到期时间">
@@ -250,7 +261,7 @@ onMounted(fetchList)
         <el-form-item label="企业简称" prop="shortName">
           <el-input v-model="editForm.shortName" />
         </el-form-item>
-        <el-form-item label="统一社会信用代码">
+        <el-form-item label="统一社会信用代码" prop="creditCode">
           <el-input v-model="editForm.creditCode" />
         </el-form-item>
         <el-form-item label="联系人姓名">

@@ -1,5 +1,6 @@
 package com.tengyei.company.dto;
 
+import com.tengyei.common.validation.CreditCode;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
@@ -11,6 +12,7 @@ public class CompanyUpdateDTO {
     private String fullName;
     @NotBlank(message = "企业简称不能为空")
     private String shortName;
+    @CreditCode
     private String creditCode;
     private String adminName;
     private String adminPhone;
