@@ -115,7 +115,7 @@ public class UserService {
 
             vos.add(UserVO.builder()
                     .id(u.getId()).username(u.getUsername()).realName(u.getRealName())
-                    .phone(u.getPhone()).email(u.getEmail()).deptId(u.getDeptId())
+                    .phone(maskPhone(u.getPhone())).email(u.getEmail()).deptId(u.getDeptId())
                     .deptIds(deptIds).deptNames(deptNames)
                     .branchId(u.getBranchId()).status(u.getStatus())
                     .roleIds(roleIds).roleNames(roleNames).build());
@@ -256,7 +256,7 @@ public class UserService {
             UserExportVO vo = new UserExportVO();
             vo.setRealName((String) row.get("real_name"));
             vo.setUsername((String) row.get("username"));
-            vo.setPhone((String) row.get("phone"));
+            vo.setPhone(maskPhone((String) row.get("phone")));
             vo.setEmail((String) row.get("email"));
             vo.setDeptName((String) row.get("dept_name"));
             vo.setDeptNames(String.join(", ", deptNames));
@@ -412,5 +412,10 @@ public class UserService {
             ids.addAll(collectSubDeptIds(child.getId()));
         }
         return ids;
+    }
+
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() != 11) return phone;
+        return phone.substring(0, 3) + "****" + phone.substring(7);
     }
 }
