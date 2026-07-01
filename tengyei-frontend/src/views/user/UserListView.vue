@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { Edit, User, Key } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import { roleApi } from '@/api/rbac'
 import { deptApi } from '@/api/org'
@@ -323,21 +324,36 @@ onMounted(() => {
           >{{ name }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="90">
+      <el-table-column label="状态" width="90" align="center">
         <template #default="{ row }">
-          <el-tag :type="(row as UserVO).status === 1 ? 'success' : 'info'">
+          <el-tag
+            :type="(row as UserVO).status === 1 ? 'success' : 'info'"
+            effect="dark"
+            round
+            size="small"
+            style="font-weight: 500; padding: 2px 12px"
+          >
             {{ (row as UserVO).status === 1 ? '启用' : '停用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="openEdit(row as UserVO)">编辑</el-button>
-          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="openRoleAssign(row as UserVO)">分配角色</el-button>
-          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="resetPassword(row as UserVO)">重置密码</el-button>
-          <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" @click="toggleStatus(row as UserVO)">
-            {{ (row as UserVO).status === 1 ? '停用' : '启用' }}
-          </el-button>
+          <div class="action-btns">
+            <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" size="small" @click="openEdit(row as UserVO)">
+              <el-icon><Edit /></el-icon> 编辑
+            </el-button>
+            <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" size="small" @click="openRoleAssign(row as UserVO)">
+              <el-icon><User /></el-icon> 分配角色
+            </el-button>
+            <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="warning" size="small" @click="resetPassword(row as UserVO)">
+              <el-icon><Key /></el-icon> 重置密码
+            </el-button>
+            <el-divider direction="vertical" />
+            <el-button v-if="auth.hasPermission('PERM_user:edit')" link :type="(row as UserVO).status === 1 ? 'danger' : 'success'" size="small" @click="toggleStatus(row as UserVO)">
+              {{ (row as UserVO).status === 1 ? '停用' : '启用' }}
+            </el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -461,5 +477,15 @@ onMounted(() => {
   margin-bottom: 12px;
   font-size: 13px;
   color: #374151;
+}
+.action-btns {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.action-btns .el-icon {
+  font-size: 13px;
+  margin-right: 2px;
 }
 </style>

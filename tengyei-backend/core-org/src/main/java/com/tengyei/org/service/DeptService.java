@@ -69,6 +69,26 @@ public class DeptService {
 
         Map<Long, DeptTreeVO> map = new LinkedHashMap<>();
         for (Dept d : all) map.put(d.getId(), DeptTreeVO.from(d));
+
+        // 批量查询负责人名称
+        Set<Long> leaderIds = all.stream().map(Dept::getLeaderId).filter(id -> id != null && id > 0).collect(Collectors.toSet());
+        if (!leaderIds.isEmpty()) {
+            String inClause = leaderIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, real_name as realName FROM `user` WHERE id IN (" + inClause + ")");
+            Map<Long, String> leaderMap = rows.stream().collect(
+                Collectors.toMap(
+                    r -> ((Number) r.get("id")).longValue(),
+                    r -> (String) r.get("realName"),
+                    (a, b) -> a
+                ));
+            for (DeptTreeVO vo : map.values()) {
+                if (vo.getLeaderId() != null) {
+                    vo.setLeaderName(leaderMap.get(vo.getLeaderId()));
+                }
+            }
+        }
+
         List<DeptTreeVO> roots = new ArrayList<>();
         for (Dept d : all) {
             DeptTreeVO node = map.get(d.getId());

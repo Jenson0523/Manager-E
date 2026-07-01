@@ -151,7 +151,7 @@ onMounted(() => {
       <div
         v-for="role in roles"
         :key="role.id"
-        :class="['role-item', { active: activeRole?.id === role.id }]"
+        :class="['role-card', { active: activeRole?.id === role.id }]"
         @click="selectRole(role)"
       >
         <div class="role-name">{{ role.name }}</div>
@@ -252,47 +252,66 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 }
-.role-item {
-  padding: 10px 12px;
-  border-radius: 6px;
+.role-card {
+  padding: 14px 16px;
+  border-radius: 8px;
   cursor: pointer;
-  margin-bottom: 4px;
-  border: 1px solid transparent;
-  transition: background 0.15s;
+  margin-bottom: 8px;
+  border: 1px solid #ebeef5;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  transition: all 0.2s ease;
 }
-.role-item:hover {
-  background: #f5f7fa;
-}
-.role-item.active {
-  background: #ecf5ff;
+.role-card:hover {
+  background: #f8faff;
   border-color: #b3d8ff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.08);
+}
+.role-card.active {
+  background: #ecf5ff;
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.12);
 }
 .role-name {
   font-weight: 600;
   font-size: 14px;
+  color: #303133;
 }
 .role-meta {
   font-size: 12px;
   color: #909399;
-}
-.role-actions {
   margin-top: 4px;
 }
+.role-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+.role-actions .el-button {
+  padding: 4px 8px;
+  height: 24px;
+}
 .perm-group {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 8px;
 }
 .group-header {
   margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #ebeef5;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
 }
 .perm-items {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 0;
-  padding-left: 16px;
+  gap: 6px 16px;
 }
 .perm-items .el-checkbox {
-  width: 200px;
+  width: 180px;
+  margin-right: 0;
+}
+.perm-items .el-checkbox__label {
+  font-size: 13px;
 }
 </style>

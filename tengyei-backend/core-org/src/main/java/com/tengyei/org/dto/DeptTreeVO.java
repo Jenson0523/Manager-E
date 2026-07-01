@@ -15,6 +15,7 @@ public class DeptTreeVO {
     private String code;
     private Long parentId;
     private Long leaderId;
+    private String leaderName;
     private Integer sortOrder;
     private Integer status;
     private List<DeptTreeVO> children = new ArrayList<>();

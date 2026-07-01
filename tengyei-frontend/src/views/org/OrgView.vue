@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { Plus, Edit, Delete, Folder, Document } from '@element-plus/icons-vue'
 import { deptApi, branchApi } from '@/api/org'
 import { useAuthStore } from '@/stores/auth'
 import type { DeptTreeVO, DeptSaveDTO, BranchVO, BranchSaveDTO } from '@/types/org'
@@ -12,10 +13,30 @@ const treeLoading = ref(false)
 const deptTree = ref<DeptTreeVO[]>([])
 const treeProps = { label: 'name', children: 'children' }
 
+/* 负责人选择 - 公司人员列表 */
+const companyUsers = ref<{ id: number; label: string }[]>([])
+
+async function fetchCompanyUsers() {
+  try {
+    // 通过用户API获取本租户下的用户列表用于负责人选择
+    const res = await fetch('/api/v1/users?page=1&size=1000', {
+      headers: { Authorization: 'Bearer ' + auth.token },
+    }).then(r => r.json())
+    if (res.records) {
+      companyUsers.value = res.records.map((u: any) => ({
+        id: u.id,
+        label: u.realName + (u.username ? ` (${u.username})` : ''),
+      }))
+    }
+  } catch {
+    // silently ignore - 人员列表可能失败
+  }
+}
+
 const deptDialog = ref(false)
 const deptFormRef = ref<FormInstance>()
 const deptEditingId = ref<number | null>(null)
-const deptForm = reactive<DeptSaveDTO>({ name: '', parentId: 0, sortOrder: 0 })
+const deptForm = reactive<DeptSaveDTO>({ name: '', parentId: 0, sortOrder: 0, leaderId: undefined })
 const deptRules: FormRules = {
   name: [{ required: true, message: '请输入部门名称', trigger: 'blur' }],
 }
@@ -31,7 +52,7 @@ async function fetchTree() {
 
 function openDeptCreate(parent?: DeptTreeVO) {
   deptEditingId.value = null
-  Object.assign(deptForm, { name: '', parentId: parent ? parent.id : 0, sortOrder: 0 })
+  Object.assign(deptForm, { name: '', code: '', parentId: parent ? parent.id : 0, sortOrder: 0, leaderId: undefined })
   deptDialog.value = true
 }
 
@@ -42,6 +63,7 @@ function openDeptEdit(node: DeptTreeVO) {
     code: node.code,
     parentId: node.parentId,
     sortOrder: node.sortOrder,
+    leaderId: node.leaderId,
   })
   deptDialog.value = true
 }
@@ -193,6 +215,7 @@ async function removeBranch(row: BranchVO) {
 onMounted(() => {
   fetchTree()
   fetchBranches()
+  fetchCompanyUsers()
 })
 </script>
 
@@ -211,14 +234,27 @@ onMounted(() => {
         :props="treeProps"
         node-key="id"
         default-expand-all
+        :expand-on-click-node="false"
+        class="dept-tree"
       >
-        <template #default="{ data }">
-          <span class="tree-node">
-            <span>{{ data.name }}</span>
+        <template #default="{ data, node }">
+          <span class="tree-node" :class="{ 'is-leaf': !data.children?.length }">
+            <span class="tree-icon">
+              <el-icon v-if="data.children?.length"><Folder /></el-icon>
+              <el-icon v-else><Document /></el-icon>
+            </span>
+            <span class="tree-label">{{ data.name }}</span>
+            <span v-if="data.leaderId && data.leaderName" class="tree-leader">{{ data.leaderName }}</span>
             <span class="tree-actions">
-              <el-button v-if="auth.hasPermission('PERM_dept:create')" link type="primary" @click.stop="openDeptCreate(data)">增</el-button>
-              <el-button v-if="auth.hasPermission('PERM_dept:edit')" link type="primary" @click.stop="openDeptEdit(data)">改</el-button>
-              <el-button v-if="auth.hasPermission('PERM_dept:delete')" link type="danger" @click.stop="removeDept(data)">删</el-button>
+              <el-button v-if="auth.hasPermission('PERM_dept:create')" link type="primary" size="small" @click.stop="openDeptCreate(data)">
+                <el-icon><Plus /></el-icon>
+              </el-button>
+              <el-button v-if="auth.hasPermission('PERM_dept:edit')" link type="primary" size="small" @click.stop="openDeptEdit(data)">
+                <el-icon><Edit /></el-icon>
+              </el-button>
+              <el-button v-if="auth.hasPermission('PERM_dept:delete')" link type="danger" size="small" @click.stop="removeDept(data)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
             </span>
           </span>
         </template>
@@ -285,6 +321,24 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="部门编码">
           <el-input v-model="deptForm.code" />
+        </el-form-item>
+        <el-form-item label="部门负责人">
+          <el-select
+            v-model="deptForm.leaderId"
+            clearable
+            filterable
+            remote
+            :remote-method="fetchCompanyUsers"
+            placeholder="搜索选择部门负责人（非必填）"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in companyUsers"
+              :key="u.id"
+              :label="u.label"
+              :value="u.id"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="排序">
           <el-input-number v-model="deptForm.sortOrder" :min="0" />
@@ -363,18 +417,58 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 }
+.dept-tree :deep(.el-tree-node__content) {
+  height: 40px;
+  border-radius: 6px;
+  margin-bottom: 2px;
+  padding-right: 8px !important;
+}
+.dept-tree :deep(.el-tree-node__content:hover) {
+  background-color: #f0f5ff;
+}
 .tree-node {
   flex: 1;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding-right: 8px;
+  gap: 6px;
+  font-size: 14px;
+}
+.tree-icon {
+  display: flex;
+  align-items: center;
+  color: #606266;
+}
+.tree-icon .el-icon {
+  font-size: 16px;
+}
+.tree-node.is-leaf .tree-icon {
+  color: #909399;
+}
+.tree-label {
+  flex: 1;
+  color: #303133;
+}
+.tree-leader {
+  font-size: 12px;
+  color: #909399;
+  background: #f4f4f5;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 .tree-actions {
+  display: flex;
+  gap: 2px;
   opacity: 0;
+  transition: opacity 0.15s;
 }
 .tree-node:hover .tree-actions {
   opacity: 1;
+}
+.tree-actions .el-button {
+  padding: 4px;
+  height: 24px;
+  width: 24px;
 }
 .pager {
   margin-top: 16px;
