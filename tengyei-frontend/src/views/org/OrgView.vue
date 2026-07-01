@@ -237,7 +237,7 @@ onMounted(() => {
         :expand-on-click-node="false"
         class="dept-tree"
       >
-        <template #default="{ data, node }">
+        <template #default="{ data }">
           <span class="tree-node" :class="{ 'is-leaf': !data.children?.length }">
             <span class="tree-icon">
               <el-icon v-if="data.children?.length"><Folder /></el-icon>
