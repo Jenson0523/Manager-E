@@ -32,17 +32,27 @@ public class DeptService {
         // 数据级权限过滤
         String scope = TenantContext.getDataScope();
         final Set<Long> allowedDeptIds;
-        if ("dept".equals(scope)) {
-            Long userDeptId = getUserDeptId();
-            if (userDeptId != null) {
-                allowedDeptIds = collectSubDeptIds(userDeptId);
+        if ("branch".equals(scope)) {
+            Long branchId = TenantContext.getBranchId();
+            if (branchId != null) {
+                allowedDeptIds = getBranchDeptIds(branchId);
+                if (allowedDeptIds.isEmpty()) return Collections.emptyList();
+            } else {
+                return Collections.emptyList();
+            }
+        } else if ("dept".equals(scope)) {
+            Set<Long> userDeptIds = getUserDeptIds();
+            if (!userDeptIds.isEmpty()) {
+                Set<Long> ids = new LinkedHashSet<>();
+                for (Long did : userDeptIds) ids.addAll(collectSubDeptIds(did));
+                allowedDeptIds = ids;
             } else {
                 return Collections.emptyList();
             }
         } else if ("self".equals(scope)) {
-            Long userDeptId = getUserDeptId();
-            if (userDeptId != null) {
-                allowedDeptIds = Set.of(userDeptId);
+            Set<Long> userDeptIds = getUserDeptIds();
+            if (!userDeptIds.isEmpty()) {
+                allowedDeptIds = userDeptIds;
             } else {
                 return Collections.emptyList();
             }
@@ -73,18 +83,30 @@ public class DeptService {
     }
 
     /**
-     * 获取当前用户的部门ID
+     * 获取当前用户关联的全部部门ID（与人员数据范围口径保持一致）
      */
-    private Long getUserDeptId() {
+    private Set<Long> getUserDeptIds() {
         Long userId = TenantContext.getUserId();
-        if (userId == null) return null;
+        if (userId == null) return Collections.emptySet();
         try {
             List<Long> ids = jdbcTemplate.queryForList(
-                "SELECT dept_id FROM user_dept WHERE user_id = ? ORDER BY is_primary DESC LIMIT 1",
-                Long.class, userId);
-            return ids.isEmpty() ? null : ids.get(0);
+                "SELECT dept_id FROM user_dept WHERE user_id = ?", Long.class, userId);
+            return new LinkedHashSet<>(ids);
         } catch (Exception e) {
-            return null;
+            return Collections.emptySet();
+        }
+    }
+
+    /**
+     * 获取指定分公司下关联的全部部门ID
+     */
+    private Set<Long> getBranchDeptIds(Long branchId) {
+        try {
+            List<Long> ids = jdbcTemplate.queryForList(
+                "SELECT dept_id FROM branch_dept WHERE branch_id = ?", Long.class, branchId);
+            return new LinkedHashSet<>(ids);
+        } catch (Exception e) {
+            return Collections.emptySet();
         }
     }
 

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.tengyei.common.context.TenantContext;
 import com.tengyei.common.exception.BusinessException;
 import com.tengyei.common.response.PageResult;
+import com.tengyei.common.validation.PasswordRule;
 import com.tengyei.org.dto.UserCreateDTO;
 import com.tengyei.org.dto.UserExportVO;
 import com.tengyei.org.dto.UserUpdateDTO;
@@ -281,7 +282,9 @@ public class UserService {
         if (status == null || (status != 0 && status != 1)) {
             throw new BusinessException(422, "状态值无效");
         }
-        String inClause = String.join(",", ids.stream().map(String::valueOf).toList());
+        List<Long> allowedIds = filterIdsInScope(ids);
+        if (allowedIds.isEmpty()) return;
+        String inClause = String.join(",", allowedIds.stream().map(String::valueOf).toList());
         if (!TenantContext.isSuperAdmin()) {
             Long tenantId = TenantContext.getTenantId();
             jdbcTemplate.update(
@@ -296,19 +299,31 @@ public class UserService {
 
     @Transactional
     public void batchAssignRoles(List<Long> ids, List<Long> roleIds) {
-        Long tenantId = TenantContext.getTenantId();
-        for (Long userId : ids) {
-            if (!TenantContext.isSuperAdmin()) {
-                Long count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM `user` WHERE id = ? AND tenant_id = ? AND is_deleted = 0",
-                    Long.class, userId, tenantId);
-                if (count == null || count == 0) continue;
-            }
+        for (Long userId : filterIdsInScope(ids)) {
             jdbcTemplate.update("DELETE FROM user_role WHERE user_id = ?", userId);
             for (Long roleId : roleIds) {
                 jdbcTemplate.update("INSERT INTO user_role (user_id, role_id) VALUES (?, ?)", userId, roleId);
             }
         }
+    }
+
+    /**
+     * 过滤出当前操作者数据范围内、且属于本租户的用户ID，用于批量写操作的越权防护。
+     */
+    private List<Long> filterIdsInScope(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        List<Long> result = new ArrayList<>();
+        for (Long id : ids) {
+            User u = userMapper.selectById(id);
+            if (u == null) continue;
+            try {
+                assertUserInScope(u);
+                result.add(id);
+            } catch (BusinessException ignored) {
+                // 越权目标静默跳过，不阻塞合法项
+            }
+        }
+        return result;
     }
 
     @Transactional
@@ -327,6 +342,7 @@ public class UserService {
     public void resetPassword(Long id, String newPassword) {
         User u = requireUser(id);
         if (!StringUtils.hasText(newPassword)) throw new BusinessException(422, "新密码不能为空");
+        if (!PasswordRule.isValid(newPassword)) throw new BusinessException(422, PasswordRule.MESSAGE);
         u.setPassword(passwordEncoder.encode(newPassword));
         u.setPwdResetRequired(1);
         u.setLoginFailCount(0);
@@ -337,7 +353,46 @@ public class UserService {
     private User requireUser(Long id) {
         User u = userMapper.selectById(id);
         if (u == null) throw new BusinessException(404, "用户不存在");
+        assertUserInScope(u);
         return u;
+    }
+
+    /**
+     * 数据范围写操作校验：确保目标用户落在当前操作者的可及范围内，防止越权写。
+     * 与列表读取口径保持一致：all 放行；branch 限本分公司；dept 限本部门及子部门；self 限本人。
+     */
+    private void assertUserInScope(User target) {
+        if (TenantContext.isSuperAdmin()) return;
+        String scope = TenantContext.getDataScope();
+        if (scope == null || "all".equals(scope)) return;
+
+        Long currentUserId = TenantContext.getUserId();
+        if ("self".equals(scope)) {
+            if (!target.getId().equals(currentUserId)) {
+                throw new BusinessException(403, "无权操作该范围外的用户");
+            }
+            return;
+        }
+        if ("branch".equals(scope)) {
+            Long branchId = TenantContext.getBranchId();
+            if (branchId == null || !branchId.equals(target.getBranchId())) {
+                throw new BusinessException(403, "无权操作该范围外的用户");
+            }
+            return;
+        }
+        if ("dept".equals(scope)) {
+            Set<Long> allowed = new LinkedHashSet<>();
+            for (Long deptId : getCurrentUserDeptIds()) {
+                allowed.addAll(collectSubDeptIds(deptId));
+            }
+            List<Long> targetDeptIds = jdbcTemplate.queryForList(
+                "SELECT dept_id FROM user_dept WHERE user_id = ?", Long.class, target.getId());
+            boolean hit = targetDeptIds.stream().anyMatch(allowed::contains);
+            if (!hit && target.getId().equals(currentUserId)) hit = true;
+            if (!hit) {
+                throw new BusinessException(403, "无权操作该范围外的用户");
+            }
+        }
     }
 
     private Set<Long> getCurrentUserDeptIds() {
