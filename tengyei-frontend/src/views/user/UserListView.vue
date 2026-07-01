@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { UserVO, UserCreateDTO, UserUpdateDTO } from '@/types/user'
 import type { RoleVO } from '@/types/rbac'
 import type { DeptTreeVO } from '@/types/org'
+import { strongPasswordRule, strongPasswordPattern, PASSWORD_TIP } from '@/utils/password'
 
 const auth = useAuthStore()
 
@@ -56,7 +57,7 @@ const createRules: FormRules = {
   username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
   realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   phone: [{ required: true, message: '请输入手机号', trigger: 'blur' }],
-  password: [{ required: true, min: 6, message: '密码至少 6 位', trigger: 'blur' }],
+  password: [strongPasswordRule()],
 }
 
 /* ---- 编辑 ---- */
@@ -198,8 +199,8 @@ async function resetPassword(row: UserVO) {
       {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
-        inputPattern: /.{6,}/,
-        inputErrorMessage: '密码至少 6 位',
+        inputPattern: strongPasswordPattern,
+        inputErrorMessage: PASSWORD_TIP,
         inputType: 'password',
       }
     )

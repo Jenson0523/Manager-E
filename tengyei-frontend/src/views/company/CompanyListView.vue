@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { companyApi } from '@/api/company'
 import type { CompanyVO, CompanyCreateDTO, CompanyUpdateDTO } from '@/types/company'
+import { strongPasswordRule } from '@/utils/password'
 
 const loading = ref(false)
 const list = ref<CompanyVO[]>([])
@@ -27,7 +28,7 @@ const createRules: FormRules = {
   adminName: [{ required: true, message: '请输入管理员姓名', trigger: 'blur' }],
   adminPhone: [{ required: true, message: '请输入管理员电话', trigger: 'blur' }],
   adminUsername: [{ required: true, message: '请输入管理员账号', trigger: 'blur' }],
-  adminPassword: [{ required: true, min: 6, message: '密码至少 6 位', trigger: 'blur' }],
+  adminPassword: [strongPasswordRule()],
 }
 
 /* ---- 编辑 ---- */

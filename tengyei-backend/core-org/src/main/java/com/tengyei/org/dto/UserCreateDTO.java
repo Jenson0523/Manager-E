@@ -1,5 +1,6 @@
 package com.tengyei.org.dto;
 
+import com.tengyei.common.validation.StrongPassword;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
@@ -15,6 +16,7 @@ public class UserCreateDTO {
     private String phone;
     private String email;
     @NotBlank(message = "初始密码不能为空")
+    @StrongPassword
     private String password;
     private Long deptId;
     private List<Long> deptIds;

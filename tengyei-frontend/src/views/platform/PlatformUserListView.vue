@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
 import type { PlatformRoleVO, PlatformUserDTO, PlatformUserVO } from '@/types/platform'
+import { isStrongPassword, strongPasswordPattern, PASSWORD_TIP } from '@/utils/password'
 
 const auth = useAuthStore()
 
@@ -51,7 +52,7 @@ const userRules: FormRules = {
     {
       validator: (_rule, value, callback) => {
         if (!editingId.value && !value) callback(new Error('请输入初始密码'))
-        else if (value && value.length < 6) callback(new Error('密码至少 6 位'))
+        else if (value && !isStrongPassword(value)) callback(new Error(PASSWORD_TIP))
         else callback()
       },
       trigger: 'blur',
@@ -124,8 +125,8 @@ async function resetPassword(row: PlatformUserVO) {
     const { value } = await ElMessageBox.prompt(`为平台账号「${row.realName}」设置新密码`, '重置密码', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      inputPattern: /.{6,}/,
-      inputErrorMessage: '密码至少 6 位',
+      inputPattern: strongPasswordPattern,
+      inputErrorMessage: PASSWORD_TIP,
       inputType: 'password',
     })
     await platformUserApi.resetPassword(row.id, value)

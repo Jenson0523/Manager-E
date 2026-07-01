@@ -1,5 +1,6 @@
 package com.tengyei.platform.dto;
 
+import com.tengyei.common.validation.StrongPassword;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import java.util.List;
@@ -12,6 +13,7 @@ public class PlatformUserDTO {
     private String realName;
     private String phone;
     private String email;
+    @StrongPassword
     private String password;
     private List<Long> roleIds;
 }

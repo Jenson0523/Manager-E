@@ -4,6 +4,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { meApi } from '@/api/me'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import { strongPasswordRule } from '@/utils/password'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -15,10 +16,7 @@ const pwdLoading = ref(false)
 const pwdForm = reactive({ oldPassword: '', newPassword: '', confirmPassword: '' })
 const pwdRules: FormRules = {
   oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
-  newPassword: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, message: '至少 6 位', trigger: 'blur' },
-  ],
+  newPassword: [strongPasswordRule()],
   confirmPassword: [
     { required: true, message: '请确认新密码', trigger: 'blur' },
     {
@@ -76,7 +74,7 @@ async function submitPassword() {
           <el-input v-model="pwdForm.oldPassword" type="password" show-password />
         </el-form-item>
         <el-form-item label="新密码" prop="newPassword">
-          <el-input v-model="pwdForm.newPassword" type="password" show-password placeholder="至少 6 位" />
+          <el-input v-model="pwdForm.newPassword" type="password" show-password placeholder="8-20 位，含大小写字母和数字" />
         </el-form-item>
         <el-form-item label="确认密码" prop="confirmPassword">
           <el-input v-model="pwdForm.confirmPassword" type="password" show-password />

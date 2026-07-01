@@ -1,5 +1,6 @@
 package com.tengyei.company.dto;
 
+import com.tengyei.common.validation.StrongPassword;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
@@ -21,5 +22,6 @@ public class CompanyCreateDTO {
     @NotBlank(message = "初始管理员账号不能为空")
     private String adminUsername;
     @NotBlank(message = "初始管理员密码不能为空")
+    @StrongPassword
     private String adminPassword;
 }

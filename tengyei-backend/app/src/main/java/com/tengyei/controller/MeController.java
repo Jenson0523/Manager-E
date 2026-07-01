@@ -3,9 +3,9 @@ package com.tengyei.controller;
 import com.tengyei.common.context.TenantContext;
 import com.tengyei.common.exception.BusinessException;
 import com.tengyei.common.response.Result;
+import com.tengyei.common.validation.StrongPassword;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,7 +49,7 @@ public class MeController {
         private String oldPassword;
 
         @NotBlank(message = "新密码不能为空")
-        @Size(min = 6, message = "新密码至少 6 位")
+        @StrongPassword
         private String newPassword;
     }
 }
