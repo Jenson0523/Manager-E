@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.tengyei.common.exception.BusinessException;
 import com.tengyei.common.response.PageResult;
+import com.tengyei.common.service.CompanyBlockService;
 import com.tengyei.company.dto.CompanyCreateDTO;
 import com.tengyei.company.dto.CompanyUpdateDTO;
 import com.tengyei.company.dto.CompanyVO;
@@ -28,6 +29,7 @@ public class CompanyService {
     private final CompanyMapper companyMapper;
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
+    private final java.util.Optional<CompanyBlockService> companyBlockService;
 
     public PageResult<CompanyVO> page(long page, long size, String keyword) {
         LambdaQueryWrapper<Company> qw = new LambdaQueryWrapper<>();
@@ -152,6 +154,11 @@ public class CompanyService {
         }
         c.setStatus(status);
         companyMapper.updateById(c);
+        if (status == 2) {
+            companyBlockService.ifPresent(svc -> svc.block(id));
+        } else {
+            companyBlockService.ifPresent(svc -> svc.unblock(id));
+        }
     }
 
     public void delete(Long id) {

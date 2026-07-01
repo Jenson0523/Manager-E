@@ -1,14 +1,11 @@
 package com.tengyei;
 
 import com.tengyei.auth.service.TokenBlacklistService;
+import com.tengyei.common.service.CompanyBlockService;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
-/**
- * Test configuration that provides a no-op TokenBlacklistService
- * so tests can run without a real Redis connection.
- */
 @TestConfiguration
 public class TestSecurityConfig {
 
@@ -18,13 +15,22 @@ public class TestSecurityConfig {
         return new TokenBlacklistService(null) {
             @Override
             public void blacklist(String token, long ttlSeconds) {
-                // no-op in tests
             }
 
             @Override
             public boolean isBlacklisted(String token) {
                 return false;
             }
+        };
+    }
+
+    @Bean
+    @Primary
+    public CompanyBlockService companyBlockService() {
+        return new CompanyBlockService() {
+            @Override public void block(Long companyId) {}
+            @Override public void unblock(Long companyId) {}
+            @Override public boolean isBlocked(Long companyId) { return false; }
         };
     }
 }

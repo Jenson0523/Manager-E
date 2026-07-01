@@ -3,6 +3,7 @@ package com.tengyei.auth.filter;
 import com.tengyei.auth.service.JwtService;
 import com.tengyei.auth.service.TokenBlacklistService;
 import com.tengyei.common.context.TenantContext;
+import com.tengyei.common.service.CompanyBlockService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,11 +26,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final Optional<TokenBlacklistService> blacklistService;
+    private final Optional<CompanyBlockService> companyBlockService;
 
     @Autowired
-    public JwtAuthFilter(JwtService jwtService, Optional<TokenBlacklistService> blacklistService) {
+    public JwtAuthFilter(JwtService jwtService,
+                         Optional<TokenBlacklistService> blacklistService,
+                         Optional<CompanyBlockService> companyBlockService) {
         this.jwtService = jwtService;
         this.blacklistService = blacklistService;
+        this.companyBlockService = companyBlockService;
     }
 
     @Override
@@ -44,6 +49,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 Long tenantId = jwtService.getTenantId(token);
                 Long userId = jwtService.getUserId(token);
                 Long branchId = jwtService.getBranchId(token);
+
+                if (tenantId != null && tenantId != 0L
+                        && companyBlockService.map(svc -> svc.isBlocked(tenantId)).orElse(false)) {
+                    // 公司已停用/到期，拒绝请求
+                    response.setStatus(423);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write("{\"code\":423,\"message\":\"所属企业已停用，请联系平台管理员\"}");
+                    return;
+                }
                 String dataScope = jwtService.getDataScope(token);
                 String realName = jwtService.getRealName(token);
                 List<String> permissions = jwtService.getPermissions(token);
