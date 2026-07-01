@@ -3,6 +3,8 @@ package com.tengyei.company.dto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.time.LocalDate;
+
 @Data
 public class CompanyUpdateDTO {
     @NotBlank(message = "企业全称不能为空")
@@ -13,5 +15,6 @@ public class CompanyUpdateDTO {
     private String adminName;
     private String adminPhone;
     private String adminEmail;
+    private LocalDate expireDate;
     private String remark;
 }

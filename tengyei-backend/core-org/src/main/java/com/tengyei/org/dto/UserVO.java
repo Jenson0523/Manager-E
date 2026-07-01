@@ -14,6 +14,8 @@ public class UserVO {
     private String phone;
     private String email;
     private Long deptId;
+    private List<Long> deptIds;
+    private List<String> deptNames;
     private Long branchId;
     private Integer status;
     private List<Long> roleIds;

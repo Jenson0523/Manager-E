@@ -19,7 +19,7 @@ public class PermissionController {
     private final PermissionService permissionService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERM_role:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*', 'PERM_role:view', 'PERM_platform:role:view')")
     public Result<List<PermissionGroupVO>> grouped() {
         return Result.ok(permissionService.grouped());
     }

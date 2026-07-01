@@ -45,7 +45,7 @@ public class PlatformRoleController {
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:role:edit')")
     @Auditable(module = "平台角色", actionType = "UPDATE", description = "编辑平台角色")
-    public Result<Void> update(@PathVariable Long id, @Valid @RequestBody PlatformRoleDTO dto) {
+    public Result<Void> update(@PathVariable(name="id") Long id, @Valid @RequestBody PlatformRoleDTO dto) {
         service.updateRole(id, dto);
         return Result.ok();
     }
@@ -53,21 +53,21 @@ public class PlatformRoleController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:role:delete')")
     @Auditable(module = "平台角色", actionType = "DELETE", description = "删除平台角色")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable(name="id") Long id) {
         service.deleteRole(id);
         return Result.ok();
     }
 
     @GetMapping("/{id}/permissions")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:role:view')")
-    public Result<List<Long>> rolePermissions(@PathVariable Long id) {
+    public Result<List<Long>> rolePermissions(@PathVariable(name="id") Long id) {
         return Result.ok(service.rolePermissionIds(id));
     }
 
     @PutMapping("/{id}/permissions")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:role:edit')")
     @Auditable(module = "平台角色", actionType = "UPDATE", description = "配置平台角色权限")
-    public Result<Void> assignPermissions(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
+    public Result<Void> assignPermissions(@PathVariable(name="id") Long id, @RequestBody Map<String, List<Long>> body) {
         service.assignRolePermissions(id, body.get("permissionIds"));
         return Result.ok();
     }

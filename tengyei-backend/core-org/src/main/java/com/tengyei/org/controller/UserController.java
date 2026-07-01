@@ -35,19 +35,19 @@ public class UserController {
     @GetMapping
     @PreAuthorize("hasAuthority('PERM_user:view')")
     public Result<PageResult<UserVO>> page(
-            @RequestParam(defaultValue = "1") long page,
-            @RequestParam(defaultValue = "20") long size,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Long deptId,
-            @RequestParam(required = false) Long roleId) {
+            @RequestParam(name = "page", defaultValue = "1") long page,
+            @RequestParam(name = "size", defaultValue = "20") long size,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "deptId", required = false) Long deptId,
+            @RequestParam(name = "roleId", required = false) Long roleId) {
         return Result.ok(userService.page(page, size, keyword, deptId, roleId));
     }
 
     @GetMapping("/export")
     @PreAuthorize("hasAuthority('PERM_user:view')")
     public void export(
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Long deptId,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "deptId", required = false) Long deptId,
             HttpServletResponse response) throws IOException {
         List<UserExportVO> data = userService.export(keyword, deptId);
         String fileName = URLEncoder.encode("人员列表_" + LocalDate.now(), StandardCharsets.UTF_8)
@@ -93,7 +93,7 @@ public class UserController {
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "编辑人员信息")
-    public Result<Void> update(@PathVariable Long id, @Valid @RequestBody UserUpdateDTO dto) {
+    public Result<Void> update(@PathVariable(name="id") Long id, @Valid @RequestBody UserUpdateDTO dto) {
         userService.update(id, dto);
         return Result.ok();
     }
@@ -101,7 +101,7 @@ public class UserController {
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority('PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "变更人员状态")
-    public Result<Void> changeStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
+    public Result<Void> changeStatus(@PathVariable(name="id") Long id, @RequestBody Map<String, Integer> body) {
         userService.changeStatus(id, body.get("status"));
         return Result.ok();
     }
@@ -109,7 +109,7 @@ public class UserController {
     @PutMapping("/{id}/roles")
     @PreAuthorize("hasAuthority('PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "分配人员角色")
-    public Result<Void> assignRoles(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
+    public Result<Void> assignRoles(@PathVariable(name="id") Long id, @RequestBody Map<String, List<Long>> body) {
         userService.assignRoles(id, body.get("roleIds"));
         return Result.ok();
     }
@@ -117,7 +117,7 @@ public class UserController {
     @PutMapping("/{id}/reset-password")
     @PreAuthorize("hasAuthority('PERM_user:reset_pwd')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "重置人员密码")
-    public Result<Void> resetPassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public Result<Void> resetPassword(@PathVariable(name="id") Long id, @RequestBody Map<String, String> body) {
         userService.resetPassword(id, body.get("password"));
         return Result.ok();
     }

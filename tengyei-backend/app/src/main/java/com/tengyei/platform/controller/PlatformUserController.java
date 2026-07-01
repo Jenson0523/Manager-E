@@ -36,7 +36,7 @@ public class PlatformUserController {
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:user:edit')")
     @Auditable(module = "平台账号", actionType = "UPDATE", description = "编辑平台账号")
-    public Result<Void> update(@PathVariable Long id, @Valid @RequestBody PlatformUserDTO dto) {
+    public Result<Void> update(@PathVariable(name="id") Long id, @Valid @RequestBody PlatformUserDTO dto) {
         service.updateUser(id, dto);
         return Result.ok();
     }
@@ -44,7 +44,7 @@ public class PlatformUserController {
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:user:edit')")
     @Auditable(module = "平台账号", actionType = "UPDATE", description = "变更平台账号状态")
-    public Result<Void> changeStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
+    public Result<Void> changeStatus(@PathVariable(name="id") Long id, @RequestBody Map<String, Integer> body) {
         service.changeUserStatus(id, body.get("status"));
         return Result.ok();
     }
@@ -52,7 +52,7 @@ public class PlatformUserController {
     @PutMapping("/{id}/roles")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:user:edit')")
     @Auditable(module = "平台账号", actionType = "UPDATE", description = "分配平台账号角色")
-    public Result<Void> assignRoles(@PathVariable Long id, @RequestBody Map<String, List<Long>> body) {
+    public Result<Void> assignRoles(@PathVariable(name="id") Long id, @RequestBody Map<String, List<Long>> body) {
         service.assignUserRoles(id, body.get("roleIds"));
         return Result.ok();
     }
@@ -60,7 +60,7 @@ public class PlatformUserController {
     @PutMapping("/{id}/reset-password")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:user:reset_pwd')")
     @Auditable(module = "平台账号", actionType = "UPDATE", description = "重置平台账号密码")
-    public Result<Void> resetPassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public Result<Void> resetPassword(@PathVariable(name="id") Long id, @RequestBody Map<String, String> body) {
         service.resetUserPassword(id, body.get("password"));
         return Result.ok();
     }
@@ -68,7 +68,7 @@ public class PlatformUserController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:user:delete')")
     @Auditable(module = "平台账号", actionType = "DELETE", description = "删除平台账号")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable(name="id") Long id) {
         service.deleteUser(id);
         return Result.ok();
     }

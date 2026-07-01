@@ -8,6 +8,7 @@ import com.tengyei.company.dto.CompanyCreateDTO;
 import com.tengyei.company.dto.CompanyUpdateDTO;
 import com.tengyei.company.dto.CompanyVO;
 import com.tengyei.company.entity.Company;
+import java.util.stream.Collectors;
 import com.tengyei.company.mapper.CompanyMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +36,19 @@ public class CompanyService {
         }
         qw.orderByDesc(Company::getId);
         Page<Company> result = companyMapper.selectPage(new Page<>(page, size), qw);
-        return PageResult.from(result, CompanyVO::from);
+        // Populate admin username
+        var vos = result.getRecords().stream().map(c -> {
+            CompanyVO vo = CompanyVO.from(c);
+            try {
+                String sql = "SELECT username FROM `user` WHERE tenant_id = ? AND is_super_admin = 0 AND is_deleted = 0 LIMIT 1";
+                String username = jdbcTemplate.queryForObject(sql, String.class, c.getId());
+                vo.setAdminUsername(username);
+            } catch (Exception e) {
+                log.debug("No admin user found for company {}", c.getId());
+            }
+            return vo;
+        }).collect(Collectors.toList());
+        return PageResult.of(vos, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
     public CompanyVO detail(Long id) {
@@ -59,6 +72,7 @@ public class CompanyService {
         c.setFullName(dto.getFullName());
         c.setShortName(dto.getShortName());
         c.setCreditCode(dto.getCreditCode());
+        c.setExpireDate(dto.getExpireDate());
         c.setAdminName(dto.getAdminName());
         c.setAdminPhone(dto.getAdminPhone());
         c.setAdminEmail(dto.getAdminEmail());
@@ -89,7 +103,7 @@ public class CompanyService {
 
         // 4. 取刚插入的管理员 userId
         Long adminUserId = jdbcTemplate.queryForObject(
-            "SELECT id FROM user WHERE username = ? AND is_deleted = 0",
+            "SELECT id FROM `user` WHERE username = ? AND is_deleted = 0",
             Long.class, dto.getAdminUsername());
 
         // 5. 建预设 company_admin 角色（query-back 取 id，兼容 H2/MySQL）
@@ -121,9 +135,11 @@ public class CompanyService {
         c.setFullName(dto.getFullName());
         c.setShortName(dto.getShortName());
         c.setCreditCode(dto.getCreditCode());
+        c.setExpireDate(dto.getExpireDate());
         c.setAdminName(dto.getAdminName());
         c.setAdminPhone(dto.getAdminPhone());
         c.setAdminEmail(dto.getAdminEmail());
+        c.setExpireDate(dto.getExpireDate());
         c.setRemark(dto.getRemark());
         companyMapper.updateById(c);
     }
@@ -146,3 +162,5 @@ public class CompanyService {
         companyMapper.deleteById(id);
     }
 }
+
+

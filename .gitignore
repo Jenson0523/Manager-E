@@ -17,3 +17,4 @@ tengyei-frontend/dist/
 
 # Maven wrapper
 .tengyei-backend/.mvn/wrapper/maven-wrapper.jar
+tengyei-backend/app/src/main/resources/application-prod.yml*

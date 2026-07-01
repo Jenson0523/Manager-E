@@ -36,7 +36,7 @@ public class DeptController {
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_dept:edit')")
     @Auditable(module = "部门管理", actionType = "UPDATE", description = "编辑部门")
-    public Result<Void> update(@PathVariable Long id, @Valid @RequestBody DeptSaveDTO dto) {
+    public Result<Void> update(@PathVariable(name="id") Long id, @Valid @RequestBody DeptSaveDTO dto) {
         deptService.update(id, dto);
         return Result.ok();
     }
@@ -44,7 +44,7 @@ public class DeptController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('PERM_dept:delete')")
     @Auditable(module = "部门管理", actionType = "DELETE", description = "删除部门")
-    public Result<Void> delete(@PathVariable Long id) {
+    public Result<Void> delete(@PathVariable(name="id") Long id) {
         deptService.delete(id);
         return Result.ok();
     }

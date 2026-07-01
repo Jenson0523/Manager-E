@@ -48,6 +48,7 @@ const createForm = reactive<UserCreateDTO>({
   email: '',
   password: '',
   deptId: undefined,
+  deptIds: [],
   branchId: undefined,
   roleIds: [],
 })
@@ -67,6 +68,7 @@ const editForm = reactive<UserUpdateDTO>({
   phone: '',
   email: '',
   deptId: undefined,
+  deptIds: [],
   branchId: undefined,
 })
 const editRules: FormRules = {
@@ -163,6 +165,7 @@ function openCreate() {
     email: '',
     password: '',
     deptId: undefined,
+    deptIds: [],
     branchId: undefined,
     roleIds: [],
   })
@@ -214,6 +217,7 @@ function openEdit(row: UserVO) {
     phone: row.phone,
     email: row.email ?? '',
     deptId: row.deptId,
+    deptIds: row.deptIds ?? [],
     branchId: row.branchId,
   })
   editDialog.value = true
@@ -296,6 +300,18 @@ onMounted(() => {
       <el-table-column prop="realName" label="姓名" width="120" />
       <el-table-column prop="username" label="账号" width="140" />
       <el-table-column prop="phone" label="手机号" width="140" />
+      <el-table-column label="部门" min-width="160">
+        <template #default="{ row }">
+          <el-tag
+            v-for="name in ((row as UserVO).deptNames ?? [])"
+            :key="name"
+            size="small"
+            type="info"
+            style="margin-right: 4px"
+          >{{ name }}</el-tag>
+          <span v-if="!((row as UserVO).deptNames ?? []).length" style="color: #999">未分配</span>
+        </template>
+      </el-table-column>
       <el-table-column label="角色" min-width="160">
         <template #default="{ row }">
           <el-tag
@@ -351,6 +367,11 @@ onMounted(() => {
         <el-form-item label="初始密码" prop="password">
           <el-input v-model="createForm.password" type="password" show-password />
         </el-form-item>
+        <el-form-item label="部门">
+          <el-select v-model="createForm.deptIds" multiple clearable placeholder="选择部门" style="width: 100%">
+            <el-option v-for="d in deptOptions" :key="d.id" :label="d.label" :value="d.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="角色">
           <el-checkbox-group v-model="createForm.roleIds">
             <el-checkbox v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</el-checkbox>
@@ -374,6 +395,11 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="邮箱">
           <el-input v-model="editForm.email" />
+        </el-form-item>
+        <el-form-item label="部门">
+          <el-select v-model="editForm.deptIds" multiple clearable placeholder="选择部门" style="width: 100%">
+            <el-option v-for="d in deptOptions" :key="d.id" :label="d.label" :value="d.id" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>

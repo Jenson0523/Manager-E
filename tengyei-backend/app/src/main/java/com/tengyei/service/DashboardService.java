@@ -96,11 +96,11 @@ public class DashboardService {
 
         // 超管专有：各企业用户数（company_dist，仅 super admin）
         if (tenantId == null) {
-            String compSql = "SELECT c.short_name AS company, COUNT(u.id) AS count " +
+            String compSql = "SELECT c.full_name AS company, COUNT(u.id) AS count " +
                              "FROM company c LEFT JOIN `user` u ON u.tenant_id=c.id " +
                              "AND u.is_deleted=0 AND u.is_super_admin=0 " +
                              "WHERE c.is_deleted=0 " +
-                             "GROUP BY c.id, c.short_name ORDER BY count DESC LIMIT 10";
+                             "GROUP BY c.id, c.full_name ORDER BY count DESC LIMIT 10";
             List<Map<String, Object>> compRows = jdbcTemplate.queryForList(compSql);
             result.put("companyDist", compRows);
         }

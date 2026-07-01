@@ -72,9 +72,9 @@ interface Shortcut {
   perm: string
 }
 const shortcuts: Shortcut[] = [
-  { title: '组织管理', path: '/company/org', perm: 'dept:view' },
-  { title: '人员管理', path: '/company/users', perm: 'user:view' },
-  { title: '角色与权限', path: '/company/roles', perm: 'role:view' },
+  { title: '组织管理', path: '/company/org', perm: 'PERM_dept:view' },
+  { title: '人员管理', path: '/company/users', perm: 'PERM_user:view' },
+  { title: '角色与权限', path: '/company/roles', perm: 'PERM_role:view' },
 ]
 </script>
 

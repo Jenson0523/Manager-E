@@ -81,6 +81,7 @@ onMounted(async () => {
 })
 
 const statusText = (s: number) => (s === 1 ? '启用' : s === 2 ? '停用' : '待激活')
+const statusType = (s: number): 'success' | 'info' | 'warning' => (s === 1 ? 'success' : s === 2 ? 'info' : 'warning')
 </script>
 
 <template>
@@ -111,7 +112,9 @@ const statusText = (s: number) => (s === 1 ? '启用' : s === 2 ? '停用' : '�
         <el-table-column prop="fullName" label="企业全称" />
         <el-table-column prop="shortName" label="简称" width="160" />
         <el-table-column label="状态" width="100">
-          <template #default="{ row }">{{ statusText(row.status) }}</template>
+          <template #default="{ row }">
+            <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
+          </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="注册时间" width="180" />
       </el-table>

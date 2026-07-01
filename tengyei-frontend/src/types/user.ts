@@ -5,6 +5,8 @@ export interface UserVO {
   phone: string
   email?: string
   deptId?: number
+  deptIds?: number[]
+  deptNames?: string[]
   branchId?: number
   status: number
   roleIds: number[]
@@ -18,6 +20,7 @@ export interface UserCreateDTO {
   email?: string
   password: string
   deptId?: number
+  deptIds?: number[]
   branchId?: number
   roleIds?: number[]
 }
@@ -27,5 +30,6 @@ export interface UserUpdateDTO {
   phone: string
   email?: string
   deptId?: number
+  deptIds?: number[]
   branchId?: number
 }

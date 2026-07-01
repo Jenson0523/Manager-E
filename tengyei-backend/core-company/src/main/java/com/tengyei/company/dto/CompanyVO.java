@@ -3,7 +3,9 @@ package com.tengyei.company.dto;
 import com.tengyei.company.entity.Company;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Getter
@@ -19,6 +21,9 @@ public class CompanyVO {
     private String adminEmail;
     private String remark;
     private Integer status;
+    private LocalDate expireDate;
+    @Setter
+    private String adminUsername;
     private LocalDateTime createdAt;
 
     public static CompanyVO from(Company c) {
@@ -33,7 +38,9 @@ public class CompanyVO {
                 .adminEmail(c.getAdminEmail())
                 .remark(c.getRemark())
                 .status(c.getStatus())
+                .expireDate(c.getExpireDate())
                 .createdAt(c.getCreatedAt())
                 .build();
     }
 }
+
