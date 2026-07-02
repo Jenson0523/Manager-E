@@ -30,7 +30,7 @@ async function handleLogout() {
   }
   await auth.logout()
   tabStore.reset()
-  router.push('/login')
+  router.replace('/login')
 }
 </script>
 

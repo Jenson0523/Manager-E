@@ -37,7 +37,6 @@
           ref="formRef"
           :model="form"
           :rules="rules"
-          @submit.prevent="handleLogin"
           class="login-form"
         >
           <el-form-item prop="username">
@@ -71,6 +70,7 @@
             class="login-btn"
             native-type="submit"
             @click="handleLogin"
+            :disabled="loading"
           >
             {{ loading ? '登录中...' : '登 录' }}
           </el-button>
@@ -113,6 +113,7 @@ const features = [
 ]
 
 async function handleLogin() {
+  if (loading.value) return
   errorMsg.value = ''
   try {
     await formRef.value?.validate()

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
@@ -12,6 +12,13 @@ const loading = ref(false)
 const list = ref<PlatformUserVO[]>([])
 const query = reactive({
   keyword: '',
+  page: 1,
+  size: 10,
+})
+
+const pagedList = computed(() => {
+  const start = (query.page - 1) * query.size
+  return list.value.slice(start, start + query.size)
 })
 
 const roles = ref<PlatformRoleVO[]>([])
@@ -30,6 +37,7 @@ async function fetchList() {
 }
 
 function onSearch() {
+  query.page = 1
   fetchList()
 }
 
@@ -92,56 +100,86 @@ function openEdit(row: PlatformUserVO) {
 
 async function submitUser() {
   if (!userFormRef.value) return
-  await userFormRef.value.validate()
-  if (editingId.value) {
-    await platformUserApi.update(editingId.value, {
-      username: userForm.username,
-      realName: userForm.realName,
-      phone: userForm.phone,
-      email: userForm.email,
-      roleIds: userForm.roleIds,
-    })
-    ElMessage.success('平台账号已更新')
-  } else {
-    await platformUserApi.create({ ...userForm })
-    ElMessage.success('平台账号已创建')
+  try {
+    await userFormRef.value.validate()
+  } catch {
+    return
   }
-  userDialog.value = false
-  await fetchList()
+  try {
+    if (editingId.value) {
+      await platformUserApi.update(editingId.value, {
+        username: userForm.username,
+        realName: userForm.realName,
+        phone: userForm.phone,
+        email: userForm.email,
+        roleIds: userForm.roleIds,
+      })
+      ElMessage.success('平台账号已更新')
+    } else {
+      await platformUserApi.create({ ...userForm })
+      ElMessage.success('平台账号已创建')
+    }
+    userDialog.value = false
+    await fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function toggleStatus(row: PlatformUserVO) {
-  if (row.isSuperAdmin) return
+  if (row.isSuperAdmin === 1) return
   const next = row.status === 1 ? 0 : 1
   const action = next === 1 ? '启用' : '停用'
-  await ElMessageBox.confirm(`确认${action}平台账号「${row.realName}」？`, '提示', { type: 'warning' })
-  await platformUserApi.changeStatus(row.id, next)
-  ElMessage.success(`已${action}`)
-  await fetchList()
+  try {
+    await ElMessageBox.confirm(`确认${action}平台账号「${row.realName}」？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await platformUserApi.changeStatus(row.id, next)
+    ElMessage.success(`已${action}`)
+    await fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function resetPassword(row: PlatformUserVO) {
+  let value: string
   try {
-    const { value } = await ElMessageBox.prompt(`为平台账号「${row.realName}」设置新密码`, '重置密码', {
+    const res = await ElMessageBox.prompt(`为平台账号「${row.realName}」设置新密码`, '重置密码', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       inputPattern: strongPasswordPattern,
       inputErrorMessage: PASSWORD_TIP,
       inputType: 'password',
     })
+    value = res.value
+  } catch {
+    return // cancelled
+  }
+  try {
     await platformUserApi.resetPassword(row.id, value)
     ElMessage.success('密码已重置')
   } catch {
-    // cancelled
+    // API error already surfaced by response interceptor
   }
 }
 
 async function deleteUser(row: PlatformUserVO) {
-  if (row.isSuperAdmin) return
-  await ElMessageBox.confirm(`确认删除平台账号「${row.realName}」？`, '提示', { type: 'warning' })
-  await platformUserApi.remove(row.id)
-  ElMessage.success('平台账号已删除')
-  await fetchList()
+  if (row.isSuperAdmin === 1) return
+  try {
+    await ElMessageBox.confirm(`确认删除平台账号「${row.realName}」？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await platformUserApi.remove(row.id)
+    ElMessage.success('平台账号已删除')
+    await fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 onMounted(() => {
@@ -171,7 +209,7 @@ onMounted(() => {
       </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="list" stripe>
+    <el-table v-loading="loading" :data="pagedList" stripe>
       <el-table-column prop="realName" label="姓名" width="130" />
       <el-table-column prop="username" label="账号" width="160" />
       <el-table-column prop="phone" label="手机" width="140" />
@@ -197,7 +235,7 @@ onMounted(() => {
       </el-table-column>
       <el-table-column label="类型" width="100">
         <template #default="{ row }">
-          <el-tag v-if="(row as PlatformUserVO).isSuperAdmin" type="warning">内置</el-tag>
+          <el-tag v-if="(row as PlatformUserVO).isSuperAdmin === 1" type="warning">内置</el-tag>
           <span v-else>平台账号</span>
         </template>
       </el-table-column>
@@ -220,7 +258,7 @@ onMounted(() => {
             重置密码
           </el-button>
           <el-button
-            v-if="!(row as PlatformUserVO).isSuperAdmin && auth.hasPermission('PERM_platform:user:edit')"
+            v-if="!((row as PlatformUserVO).isSuperAdmin === 1) && auth.hasPermission('PERM_platform:user:edit')"
             link
             type="primary"
             @click="toggleStatus(row as PlatformUserVO)"
@@ -228,7 +266,7 @@ onMounted(() => {
             {{ (row as PlatformUserVO).status === 1 ? '停用' : '启用' }}
           </el-button>
           <el-button
-            v-if="!(row as PlatformUserVO).isSuperAdmin && auth.hasPermission('PERM_platform:user:delete')"
+            v-if="!((row as PlatformUserVO).isSuperAdmin === 1) && auth.hasPermission('PERM_platform:user:delete')"
             link
             type="danger"
             @click="deleteUser(row as PlatformUserVO)"
@@ -238,6 +276,15 @@ onMounted(() => {
         </template>
       </el-table-column>
     </el-table>
+
+    <el-pagination
+      class="pager"
+      layout="total, prev, pager, next"
+      :total="list.length"
+      :current-page="query.page"
+      :page-size="query.size"
+      @current-change="(p: number) => { query.page = p }"
+    />
 
     <el-dialog v-model="userDialog" :title="editingId ? '编辑平台账号' : '新增平台账号'" width="520px">
       <el-form ref="userFormRef" :model="userForm" :rules="userRules" label-width="96px">
@@ -282,5 +329,9 @@ onMounted(() => {
   display: flex;
   gap: 10px;
   margin-bottom: 16px;
+}
+.pager {
+  margin-top: 16px;
+  justify-content: flex-end;
 }
 </style>

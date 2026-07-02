@@ -117,20 +117,32 @@ function openBatchRoles() {
 async function submitBatchStatus(status: number) {
   if (!selectedIds.value.length) return
   const action = status === 1 ? '启用' : '停用'
-  await ElMessageBox.confirm(`确认批量${action} ${selectedIds.value.length} 个用户？`, '提示', { type: 'warning' })
-  await userApi.batchStatus(selectedIds.value, status)
-  ElMessage.success(`已批量${action}`)
-  clearSelection()
-  fetchList()
+  try {
+    await ElMessageBox.confirm(`确认批量${action} ${selectedIds.value.length} 个用户？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await userApi.batchStatus(selectedIds.value, status)
+    ElMessage.success(`已批量${action}`)
+    clearSelection()
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function submitBatchRoles() {
   if (!selectedIds.value.length) return
-  await userApi.batchRoles(selectedIds.value, batchRoleIds.value)
-  ElMessage.success('角色已批量分配')
-  batchRoleDialog.value = false
-  clearSelection()
-  fetchList()
+  try {
+    await userApi.batchRoles(selectedIds.value, batchRoleIds.value)
+    ElMessage.success('角色已批量分配')
+    batchRoleDialog.value = false
+    clearSelection()
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function fetchList() {
@@ -176,25 +188,42 @@ function openCreate() {
 
 async function submitCreate() {
   if (!createFormRef.value) return
-  await createFormRef.value.validate()
-  await userApi.create({ ...createForm })
-  ElMessage.success('用户创建成功')
-  createDialog.value = false
-  fetchList()
+  try {
+    await createFormRef.value.validate()
+  } catch {
+    return
+  }
+  try {
+    await userApi.create({ ...createForm })
+    ElMessage.success('用户创建成功')
+    createDialog.value = false
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function toggleStatus(row: UserVO) {
   const next = row.status === 1 ? 0 : 1
   const action = next === 0 ? '停用' : '启用'
-  await ElMessageBox.confirm(`确认${action}用户「${row.realName}」？`, '提示', { type: 'warning' })
-  await userApi.changeStatus(row.id, next)
-  ElMessage.success(`已${action}`)
-  fetchList()
+  try {
+    await ElMessageBox.confirm(`确认${action}用户「${row.realName}」？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await userApi.changeStatus(row.id, next)
+    ElMessage.success(`已${action}`)
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function resetPassword(row: UserVO) {
+  let value: string
   try {
-    const { value } = await ElMessageBox.prompt(
+    const res = await ElMessageBox.prompt(
       `为用户「${row.realName}」设置新密码`,
       '重置密码',
       {
@@ -205,10 +234,15 @@ async function resetPassword(row: UserVO) {
         inputType: 'password',
       }
     )
+    value = res.value
+  } catch {
+    return // cancelled
+  }
+  try {
     await userApi.resetPassword(row.id, value)
     ElMessage.success('密码已重置')
   } catch {
-    // cancelled
+    // API error already surfaced by response interceptor
   }
 }
 
@@ -227,11 +261,19 @@ function openEdit(row: UserVO) {
 
 async function submitEdit() {
   if (!editFormRef.value || editingId.value == null) return
-  await editFormRef.value.validate()
-  await userApi.update(editingId.value, { ...editForm })
-  ElMessage.success('用户信息已更新')
-  editDialog.value = false
-  fetchList()
+  try {
+    await editFormRef.value.validate()
+  } catch {
+    return
+  }
+  try {
+    await userApi.update(editingId.value, { ...editForm })
+    ElMessage.success('用户信息已更新')
+    editDialog.value = false
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 function openRoleAssign(row: UserVO) {
@@ -242,10 +284,14 @@ function openRoleAssign(row: UserVO) {
 
 async function saveRoles() {
   if (!roleTarget.value) return
-  await userApi.assignRoles(roleTarget.value.id, selectedRoleIds.value)
-  ElMessage.success('角色已更新')
-  roleDialog.value = false
-  fetchList()
+  try {
+    await userApi.assignRoles(roleTarget.value.id, selectedRoleIds.value)
+    ElMessage.success('角色已更新')
+    roleDialog.value = false
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 onMounted(() => {

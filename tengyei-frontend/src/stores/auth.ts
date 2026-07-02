@@ -24,7 +24,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchUserInfo() {
-    userInfo.value = await authApi.userinfo()
+    try {
+      userInfo.value = await authApi.userinfo()
+    } catch (err) {
+      token.value = null
+      localStorage.removeItem('access_token')
+      throw err
+    }
   }
 
   async function logout() {

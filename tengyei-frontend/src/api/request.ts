@@ -1,6 +1,30 @@
 import axios, { type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value: unknown) => void
+  reject: (reason?: unknown) => void
+  config: InternalAxiosRequestConfig
+}> = []
+
+function processFailedQueue(error: unknown) {
+  failedQueue.forEach((item) => {
+    item.reject(error)
+  })
+  failedQueue = []
+}
+
+function pushToLogin() {
+  // Lazy import router to avoid "useRouter() must be called from setup" error
+  import('@/router').then(({ default: router }) => {
+    router.push('/login')
+  }).catch(() => {
+    // Router not ready, fall back to direct assignment
+    window.location.hash = '/login'
+  })
+}
+
 const request: AxiosInstance = axios.create({
   baseURL: '/api',
   timeout: 10000,
@@ -29,17 +53,58 @@ request.interceptors.response.use(
     }
     if (data.code === 401) {
       localStorage.removeItem('access_token')
-      window.location.href = '/login'
+      pushToLogin()
       return Promise.reject(new Error(data.msg))
     }
     ElMessage.error(data.msg || '请求失败')
     return Promise.reject(new Error(data.msg))
   },
-  (error) => {
+  async (error) => {
+    // Handle 401 from token expiry — try refresh
+    if (error.response?.status === 401 && !error.config._retried) {
+      if (!isRefreshing) {
+        isRefreshing = true
+        try {
+          const { authApi } = await import('@/api/auth')
+          await authApi.refresh()
+          // Refresh succeeded — reissue queued requests
+          const newToken = localStorage.getItem('access_token')
+          if (newToken) {
+            const originalRequests = [...failedQueue]
+            failedQueue = []
+            originalRequests.forEach((item) => {
+              item.config.headers.Authorization = `Bearer ${newToken}`
+              item.resolve(request(item.config))
+            })
+          }
+          // Retry the original request
+          error.config._retried = true
+          return request(error.config)
+        } catch (refreshError) {
+          // Refresh failed — clear token and go to login
+          localStorage.removeItem('access_token')
+          pushToLogin()
+          processFailedQueue(refreshError)
+          return Promise.reject(refreshError)
+        } finally {
+          isRefreshing = false
+        }
+      }
+      // Another request is already refreshing — queue this request
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject, config: error.config })
+      })
+    }
+
+    // Handle HTTP 422 (CORS preflight failure)
     if (error.response?.status === 422) {
-      ElMessage.error('请检查输入内容')
+      ElMessage.error('网络请求被拒绝，请检查网络或跨域设置')
+    } else if (error.response) {
+      ElMessage.error(`服务器错误 (${error.response.status})`)
+    } else if (error.request) {
+      ElMessage.error('网络连接失败，请检查网络')
     } else {
-      ElMessage.error('网络错误，请稍后重试')
+      ElMessage.error(error.message || '请求失败')
     }
     return Promise.reject(error)
   }

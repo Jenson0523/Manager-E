@@ -21,6 +21,19 @@ const iconMap: Record<string, Component> = {
   '/company/roles': Lock,
 }
 
+// Backend RouteVO only carries the English program name; map path -> Chinese title.
+const titleMap: Record<string, string> = {
+  '/dashboard': '工作台',
+  '/admin/companies': '企业管理',
+  '/admin/audit-logs': '操作日志',
+  '/admin/system-config': '系统设置',
+  '/admin/users': '平台人员',
+  '/admin/roles': '平台角色',
+  '/company/org': '组织管理',
+  '/company/users': '人员管理',
+  '/company/roles': '角色与权限',
+}
+
 const menuRoutes = computed(() => auth.routes)
 const activePath = computed(() => route.path)
 
@@ -45,7 +58,7 @@ function go(path: string) {
     >
       <el-menu-item v-for="r in menuRoutes" :key="r.path" :index="r.path">
         <el-icon v-if="iconMap[r.path]"><component :is="iconMap[r.path]" /></el-icon>
-        <span>{{ r.name }}</span>
+        <span>{{ titleMap[r.path] || r.name }}</span>
       </el-menu-item>
     </el-menu>
     <div class="sidebar-footer">v2.0</div>

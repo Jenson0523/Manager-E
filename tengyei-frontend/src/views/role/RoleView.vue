@@ -69,6 +69,8 @@ async function savePermissions() {
   try {
     await roleApi.assignPermissions(activeRole.value.id, checkedIds.value)
     ElMessage.success('权限已保存')
+  } catch {
+    // API error already surfaced by response interceptor
   } finally {
     saving.value = false
   }
@@ -108,27 +110,43 @@ function openEdit(role: RoleVO) {
 
 async function submitRole() {
   if (!roleFormRef.value) return
-  await roleFormRef.value.validate()
-  if (editingId.value) {
-    await roleApi.update(editingId.value, { ...roleForm })
-    ElMessage.success('角色已更新')
-  } else {
-    await roleApi.create({ ...roleForm })
-    ElMessage.success('角色已创建')
+  try {
+    await roleFormRef.value.validate()
+  } catch {
+    return
   }
-  roleDialog.value = false
-  fetchRoles()
+  try {
+    if (editingId.value) {
+      await roleApi.update(editingId.value, { ...roleForm })
+      ElMessage.success('角色已更新')
+    } else {
+      await roleApi.create({ ...roleForm })
+      ElMessage.success('角色已创建')
+    }
+    roleDialog.value = false
+    fetchRoles()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function deleteRole(role: RoleVO) {
-  await ElMessageBox.confirm(`确认删除角色「${role.name}」？此操作不可撤销。`, '提示', { type: 'warning' })
-  await roleApi.remove(role.id)
-  ElMessage.success('已删除')
-  if (activeRole.value?.id === role.id) {
-    activeRole.value = null
-    checkedIds.value = []
+  try {
+    await ElMessageBox.confirm(`确认删除角色「${role.name}」？此操作不可撤销。`, '提示', { type: 'warning' })
+  } catch {
+    return
   }
-  fetchRoles()
+  try {
+    await roleApi.remove(role.id)
+    ElMessage.success('已删除')
+    if (activeRole.value?.id === role.id) {
+      activeRole.value = null
+      checkedIds.value = []
+    }
+    fetchRoles()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 const noActiveRole = computed(() => !activeRole.value)

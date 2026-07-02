@@ -83,23 +83,39 @@ function openDeptEdit(node: DeptTreeVO) {
 
 async function submitDept() {
   if (!deptFormRef.value) return
-  await deptFormRef.value.validate()
-  if (deptEditingId.value) {
-    await deptApi.update(deptEditingId.value, { ...deptForm })
-    ElMessage.success('部门已更新')
-  } else {
-    await deptApi.create({ ...deptForm })
-    ElMessage.success('部门已创建')
+  try {
+    await deptFormRef.value.validate()
+  } catch {
+    return
   }
-  deptDialog.value = false
-  fetchTree()
+  try {
+    if (deptEditingId.value) {
+      await deptApi.update(deptEditingId.value, { ...deptForm })
+      ElMessage.success('部门已更新')
+    } else {
+      await deptApi.create({ ...deptForm })
+      ElMessage.success('部门已创建')
+    }
+    deptDialog.value = false
+    fetchTree()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function removeDept(node: DeptTreeVO) {
-  await ElMessageBox.confirm(`确认删除部门「${node.name}」？`, '提示', { type: 'warning' })
-  await deptApi.remove(node.id)
-  ElMessage.success('已删除')
-  fetchTree()
+  try {
+    await ElMessageBox.confirm(`确认删除部门「${node.name}」？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await deptApi.remove(node.id)
+    ElMessage.success('已删除')
+    fetchTree()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 /* ---------- Branch list ---------- */
@@ -154,25 +170,41 @@ function openBranchEdit(row: BranchVO) {
 
 async function submitBranch() {
   if (!branchFormRef.value) return
-  await branchFormRef.value.validate()
-  if (branchEditingId.value) {
-    await branchApi.update(branchEditingId.value, { ...branchForm })
-    ElMessage.success('分支机构已更新')
-  } else {
-    await branchApi.create({ ...branchForm })
-    ElMessage.success('分支机构已创建')
+  try {
+    await branchFormRef.value.validate()
+  } catch {
+    return
   }
-  branchDialog.value = false
-  fetchBranches()
+  try {
+    if (branchEditingId.value) {
+      await branchApi.update(branchEditingId.value, { ...branchForm })
+      ElMessage.success('分支机构已更新')
+    } else {
+      await branchApi.create({ ...branchForm })
+      ElMessage.success('分支机构已创建')
+    }
+    branchDialog.value = false
+    fetchBranches()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function toggleBranch(row: BranchVO) {
   const next = row.status === 1 ? 0 : 1
   const action = next === 0 ? '停用' : '启用'
-  await ElMessageBox.confirm(`确认${action}「${row.name}」？`, '提示', { type: 'warning' })
-  await branchApi.changeStatus(row.id, next)
-  ElMessage.success(`已${action}`)
-  fetchBranches()
+  try {
+    await ElMessageBox.confirm(`确认${action}「${row.name}」？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await branchApi.changeStatus(row.id, next)
+    ElMessage.success(`已${action}`)
+    fetchBranches()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 /* ---------- Branch-Dept association ---------- */
@@ -219,10 +251,18 @@ async function submitDeptLink() {
 }
 
 async function removeBranch(row: BranchVO) {
-  await ElMessageBox.confirm(`确认删除分公司「${row.name}」？关联部门数据将同步清除。`, '提示', { type: 'warning' })
-  await branchApi.remove(row.id)
-  ElMessage.success('已删除')
-  fetchBranches()
+  try {
+    await ElMessageBox.confirm(`确认删除分公司「${row.name}」？关联部门数据将同步清除。`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await branchApi.remove(row.id)
+    ElMessage.success('已删除')
+    fetchBranches()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 onMounted(() => {

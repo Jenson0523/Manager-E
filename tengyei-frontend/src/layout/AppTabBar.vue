@@ -63,6 +63,16 @@ function closeCtx() {
   align-items: flex-end;
   gap: 4px;
   padding: 0 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.tabbar::-webkit-scrollbar {
+  height: 4px;
+}
+.tabbar::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 2px;
 }
 .tab {
   display: flex;
@@ -77,6 +87,8 @@ function closeCtx() {
   font-size: 13px;
   color: #4b5563;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tab.active {
   background: var(--color-primary, #3b82f6);

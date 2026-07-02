@@ -91,11 +91,19 @@ function openCreate() {
 
 async function submitCreate() {
   if (!createFormRef.value) return
-  await createFormRef.value.validate()
-  await companyApi.create({ ...createForm })
-  ElMessage.success('企业创建成功')
-  createVisible.value = false
-  fetchList()
+  try {
+    await createFormRef.value.validate()
+  } catch {
+    return
+  }
+  try {
+    await companyApi.create({ ...createForm })
+    ElMessage.success('企业创建成功')
+    createVisible.value = false
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 function openEdit(row: CompanyVO) {
@@ -115,20 +123,36 @@ function openEdit(row: CompanyVO) {
 
 async function submitEdit() {
   if (!editFormRef.value || editingId.value == null) return
-  await editFormRef.value.validate()
-  await companyApi.update(editingId.value, { ...editForm })
-  ElMessage.success('企业信息已更新')
-  editVisible.value = false
-  fetchList()
+  try {
+    await editFormRef.value.validate()
+  } catch {
+    return
+  }
+  try {
+    await companyApi.update(editingId.value, { ...editForm })
+    ElMessage.success('企业信息已更新')
+    editVisible.value = false
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function toggleStatus(row: CompanyVO) {
   const next = row.status === 1 ? 2 : 1
   const action = next === 2 ? '停用' : '启用'
-  await ElMessageBox.confirm(`确认${action}企业「${row.shortName}」？`, '提示', { type: 'warning' })
-  await companyApi.changeStatus(row.id, next)
-  ElMessage.success(`已${action}`)
-  fetchList()
+  try {
+    await ElMessageBox.confirm(`确认${action}企业「${row.shortName}」？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await companyApi.changeStatus(row.id, next)
+    ElMessage.success(`已${action}`)
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function deleteCompany(row: CompanyVO) {
@@ -136,13 +160,21 @@ async function deleteCompany(row: CompanyVO) {
     ElMessage.warning('请先停用企业再删除')
     return
   }
-  await ElMessageBox.confirm(`确认删除企业「${row.shortName}」？此操作不可恢复！`, '危险操作', {
-    type: 'error',
-    confirmButtonText: '确定删除',
-  })
-  await companyApi.delete(row.id)
-  ElMessage.success('企业已删除')
-  fetchList()
+  try {
+    await ElMessageBox.confirm(`确认删除企业「${row.shortName}」？此操作不可恢复！`, '危险操作', {
+      type: 'error',
+      confirmButtonText: '确定删除',
+    })
+  } catch {
+    return
+  }
+  try {
+    await companyApi.delete(row.id)
+    ElMessage.success('企业已删除')
+    fetchList()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
 }
 
 async function resetAdminPassword(row: CompanyVO) {
