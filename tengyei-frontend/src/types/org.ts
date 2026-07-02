@@ -26,6 +26,8 @@ export interface BranchVO {
   phone?: string
   city?: string
   status: number
+  deptId?: number
+  deptName?: string
   deptIds: number[]
   deptNames: string[]
 }
@@ -39,6 +41,7 @@ export interface BranchSaveDTO {
   district?: string
   address?: string
   leaderId?: number
+  deptId?: number
   phone?: string
   maxUsers?: number
 }

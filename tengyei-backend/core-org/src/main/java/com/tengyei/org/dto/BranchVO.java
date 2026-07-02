@@ -17,9 +17,13 @@ public class BranchVO {
     private String phone;
     private String city;
     private Integer status;
-    /** 关联的部门ID列表 */
+    /** 关联的部门ID */
+    private Long deptId;
+    /** 关联的部门名称 */
+    private String deptName;
+    /** 关联的部门ID列表（兼容旧字段） */
     private List<Long> deptIds;
-    /** 关联的部门名称列表 */
+    /** 关联的部门名称列表（兼容旧字段） */
     private List<String> deptNames;
 
     public static BranchVO from(Branch b) {

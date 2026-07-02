@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Edit, Delete, Folder, Document } from '@element-plus/icons-vue'
 import { deptApi, branchApi } from '@/api/org'
+import { userApi } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
 import type { DeptTreeVO, DeptSaveDTO, BranchVO, BranchSaveDTO } from '@/types/org'
 
@@ -12,25 +13,34 @@ const auth = useAuthStore()
 const treeLoading = ref(false)
 const deptTree = ref<DeptTreeVO[]>([])
 const treeProps = { label: 'name', children: 'children' }
-
-/* 负责人选择 - 公司人员列表 */
-const companyUsers = ref<{ id: number; label: string }[]>([])
-const userSearchKeyword = ref('')
-const allLoaded = ref(false)
-
-const filteredCompanyUsers = computed(() => {
-  if (!userSearchKeyword.value) return companyUsers.value
-  const kw = userSearchKeyword.value.toLowerCase()
-  return companyUsers.value.filter(u => u.label.toLowerCase().includes(kw))
+const selectedDeptId = ref<number | null>(null)
+const selectedDeptName = computed(() => {
+  if (!selectedDeptId.value) return null
+  function find(nodes: DeptTreeVO[]): DeptTreeVO | null {
+    for (const n of nodes) {
+      if (n.id === selectedDeptId.value) return n
+      if (n.children) {
+        const found = find(n.children)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  return find(deptTree.value)?.name || null
 })
 
-async function preloadUsers() {
-  if (allLoaded.value) return
-  allLoaded.value = true
+function handleNodeClick(data: DeptTreeVO) {
+  selectedDeptId.value = data.id
+  branchQuery.page = 1
+  fetchBranches()
+}
+
+/* 负责人选择 - 远程搜索 */
+const companyUsers = ref<{ id: number; label: string }[]>([])
+
+async function searchCompanyUsers(query: string) {
   try {
-    const res = await fetch('/api/v1/users?page=1&size=1000', {
-      headers: { Authorization: 'Bearer ' + auth.token },
-    }).then(r => r.json())
+    const res = await userApi.page({ page: 1, size: 50, keyword: query })
     if (res.records) {
       companyUsers.value = res.records.map((u: any) => ({
         id: u.id,
@@ -40,10 +50,6 @@ async function preloadUsers() {
   } catch {
     companyUsers.value = []
   }
-}
-
-function onLeaderDropdownVisible(visible: boolean) {
-  if (visible) preloadUsers()
 }
 
 const deptDialog = ref(false)
@@ -112,7 +118,11 @@ async function removeDept(node: DeptTreeVO) {
   try {
     await deptApi.remove(node.id)
     ElMessage.success('已删除')
+    if (selectedDeptId.value === node.id) {
+      selectedDeptId.value = null
+    }
     fetchTree()
+    fetchBranches()
   } catch {
     // API error already surfaced by response interceptor
   }
@@ -133,10 +143,16 @@ const branchRules: FormRules = {
   name: [{ required: true, message: '请输入机构名称', trigger: 'blur' }],
 }
 
+const isAffiliated = computed(() => branchForm.type === 'affiliated')
+
 async function fetchBranches() {
   branchLoading.value = true
   try {
-    const res = await branchApi.page({ page: branchQuery.page, size: branchQuery.size })
+    const res = await branchApi.page({
+      page: branchQuery.page,
+      size: branchQuery.size,
+      deptId: selectedDeptId.value || undefined,
+    })
     branches.value = res.records
     branchTotal.value = res.total
   } finally {
@@ -146,14 +162,19 @@ async function fetchBranches() {
 
 function openBranchCreate() {
   branchEditingId.value = null
+  const hasSelected = selectedDeptId.value != null
   Object.assign(branchForm, {
     branchNo: '',
     name: '',
-    type: 'independent',
+    type: hasSelected ? 'affiliated' : 'independent',
+    deptId: hasSelected ? selectedDeptId.value : undefined,
     city: '',
     phone: '',
+    leaderId: undefined,
   })
   branchDialog.value = true
+  // 预加载负责人选项
+  searchCompanyUsers('')
 }
 
 function openBranchEdit(row: BranchVO) {
@@ -162,10 +183,13 @@ function openBranchEdit(row: BranchVO) {
     branchNo: row.branchNo,
     name: row.name,
     type: row.type,
+    deptId: row.deptId,
     city: row.city,
     phone: row.phone,
+    leaderId: row.leaderId,
   })
   branchDialog.value = true
+  searchCompanyUsers('')
 }
 
 async function submitBranch() {
@@ -173,6 +197,11 @@ async function submitBranch() {
   try {
     await branchFormRef.value.validate()
   } catch {
+    return
+  }
+  // 附属机构必须关联部门
+  if (branchForm.type === 'affiliated' && !branchForm.deptId) {
+    ElMessage.warning('附属机构必须选择绑定的根部门')
     return
   }
   try {
@@ -185,6 +214,7 @@ async function submitBranch() {
     }
     branchDialog.value = false
     fetchBranches()
+    if (selectedDeptId.value) fetchTree() // 刷新树确保关联信息同步
   } catch {
     // API error already surfaced by response interceptor
   }
@@ -207,7 +237,22 @@ async function toggleBranch(row: BranchVO) {
   }
 }
 
-/* ---------- Branch-Dept association ---------- */
+async function removeBranch(row: BranchVO) {
+  try {
+    await ElMessageBox.confirm(`确认删除分公司「${row.name}」？关联部门数据将同步清除。`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await branchApi.remove(row.id)
+    ElMessage.success('已删除')
+    fetchBranches()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
+}
+
+/* ---------- Branch-Dept association (legacy) ---------- */
 const deptLinkDialog = ref(false)
 const linkBranchId = ref<number | null>(null)
 const linkBranchName = ref('')
@@ -219,7 +264,7 @@ function flattenTree(nodes: DeptTreeVO[]): { id: number; name: string; indent: s
   const result: { id: number; name: string; indent: string }[] = []
   function walk(list: DeptTreeVO[], level: number) {
     for (const n of list) {
-      result.push({ id: n.id, name: n.name, indent: '　'.repeat(level) })
+      result.push({ id: n.id, name: n.name, indent: '\u3000'.repeat(level) })
       if (n.children && n.children.length > 0) walk(n.children, level + 1)
     }
   }
@@ -250,21 +295,6 @@ async function submitDeptLink() {
   }
 }
 
-async function removeBranch(row: BranchVO) {
-  try {
-    await ElMessageBox.confirm(`确认删除分公司「${row.name}」？关联部门数据将同步清除。`, '提示', { type: 'warning' })
-  } catch {
-    return
-  }
-  try {
-    await branchApi.remove(row.id)
-    ElMessage.success('已删除')
-    fetchBranches()
-  } catch {
-    // API error already surfaced by response interceptor
-  }
-}
-
 onMounted(() => {
   fetchTree()
   fetchBranches()
@@ -287,10 +317,12 @@ onMounted(() => {
         node-key="id"
         default-expand-all
         :expand-on-click-node="false"
+        :highlight-current="true"
         class="dept-tree"
+        @node-click="handleNodeClick"
       >
         <template #default="{ data }">
-          <span class="tree-node" :class="{ 'is-leaf': !data.children?.length }">
+          <span class="tree-node" :class="{ 'is-leaf': !data.children?.length, 'is-selected': selectedDeptId === data.id }">
             <span class="tree-icon">
               <el-icon v-if="data.children?.length"><Folder /></el-icon>
               <el-icon v-else><Document /></el-icon>
@@ -311,6 +343,10 @@ onMounted(() => {
           </span>
         </template>
       </el-tree>
+      <div v-if="selectedDeptId" class="selected-dept-hint">
+        已选中：<strong>{{ selectedDeptName }}</strong>
+        <el-button link type="primary" size="small" @click="selectedDeptId = null; fetchBranches()">清除筛选</el-button>
+      </div>
     </el-card>
 
     <el-card class="branch-pane" shadow="never">
@@ -379,12 +415,13 @@ onMounted(() => {
             v-model="deptForm.leaderId"
             clearable
             filterable
+            remote
+            :remote-method="searchCompanyUsers"
             placeholder="搜索选择部门负责人（非必填）"
             style="width: 100%"
-            @visible-change="onLeaderDropdownVisible"
           >
             <el-option
-              v-for="u in filteredCompanyUsers"
+              v-for="u in companyUsers"
               :key="u.id"
               :label="u.label"
               :value="u.id"
@@ -405,9 +442,9 @@ onMounted(() => {
     <el-dialog
       v-model="branchDialog"
       :title="branchEditingId ? '编辑分支机构' : '新增分支机构'"
-      width="460px"
+      width="480px"
     >
-      <el-form ref="branchFormRef" :model="branchForm" :rules="branchRules" label-width="90px">
+      <el-form ref="branchFormRef" :model="branchForm" :rules="branchRules" label-width="100px">
         <el-form-item label="机构编号" prop="branchNo">
           <el-input v-model="branchForm.branchNo" />
         </el-form-item>
@@ -415,16 +452,46 @@ onMounted(() => {
           <el-input v-model="branchForm.name" />
         </el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="branchForm.type">
+          <el-select v-model="branchForm.type" style="width: 100%">
             <el-option label="独立机构" value="independent" />
             <el-option label="附属机构" value="affiliated" />
           </el-select>
+        </el-form-item>
+        <!-- 附属机构显示绑定部门选择 -->
+        <el-form-item v-if="isAffiliated" label="绑定根部门">
+          <el-tree-select
+            v-model="branchForm.deptId"
+            :data="deptTree"
+            :props="{ label: 'name', value: 'id', children: 'children' }"
+            check-strictly
+            clearable
+            placeholder="选择绑定的根部门"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item label="所在城市">
           <el-input v-model="branchForm.city" />
         </el-form-item>
         <el-form-item label="联系电话">
           <el-input v-model="branchForm.phone" />
+        </el-form-item>
+        <el-form-item label="负责人">
+          <el-select
+            v-model="branchForm.leaderId"
+            clearable
+            filterable
+            remote
+            :remote-method="searchCompanyUsers"
+            placeholder="搜索选择负责人（非必填）"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in companyUsers"
+              :key="u.id"
+              :label="u.label"
+              :value="u.id"
+            />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -484,6 +551,10 @@ onMounted(() => {
 .dept-tree :deep(.el-tree-node__content:hover) {
   background-color: #f0f5ff;
 }
+/* 选中高亮 */
+.dept-tree :deep(.el-tree-node.is-current > .el-tree-node__content) {
+  background-color: #ecf5ff !important;
+}
 .tree-node {
   flex: 1;
   display: flex;
@@ -527,6 +598,17 @@ onMounted(() => {
   padding: 4px;
   height: 24px;
   width: 24px;
+}
+.selected-dept-hint {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f0f5ff;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #409eff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 .pager {
   margin-top: 16px;

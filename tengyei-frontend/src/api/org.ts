@@ -10,7 +10,7 @@ export const deptApi = {
 }
 
 export const branchApi = {
-  page: (params: { page: number; size: number }) =>
+  page: (params: { page: number; size: number; deptId?: number }) =>
     request.get<never, PageResult<BranchVO>>('/v1/branches', { params }),
   create: (data: BranchSaveDTO) => request.post<never, IdResult>('/v1/branches', data),
   update: (id: number, data: BranchSaveDTO) => request.put<never, void>(`/v1/branches/${id}`, data),

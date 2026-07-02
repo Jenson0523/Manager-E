@@ -173,6 +173,8 @@ public class DeptService {
         if (childCount != null && childCount > 0) {
             throw new BusinessException(409, "存在子部门，无法删除");
         }
+        // 清理 user_dept 关联
+        jdbcTemplate.update("DELETE FROM user_dept WHERE dept_id = ?", id);
         deptMapper.deleteById(id);
     }
 }

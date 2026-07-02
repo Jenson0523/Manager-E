@@ -28,7 +28,7 @@ public class BranchService {
     private final BranchDeptMapper branchDeptMapper;
     private final DeptMapper deptMapper;
 
-    public PageResult<BranchVO> page(long page, long size) {
+    public PageResult<BranchVO> page(long page, long size, Long deptId) {
         LambdaQueryWrapper<Branch> qw = new LambdaQueryWrapper<>();
 
         // 租户隔离：非超管只能看本租户
@@ -49,6 +49,18 @@ public class BranchService {
             return PageResult.of(Collections.emptyList(), 0L, page, size);
         }
 
+        // 按部门过滤（选中部门后只显示该部门关联的分支）
+        List<Long> branchIdsByDept = null;
+        if (deptId != null && deptId > 0) {
+            branchIdsByDept = branchDeptMapper.selectList(
+                    new LambdaQueryWrapper<BranchDept>().eq(BranchDept::getDeptId, deptId))
+                .stream().map(BranchDept::getBranchId).collect(Collectors.toList());
+            if (branchIdsByDept.isEmpty()) {
+                return PageResult.of(Collections.emptyList(), 0L, page, size);
+            }
+            qw.in(Branch::getId, branchIdsByDept);
+        }
+
         qw.orderByDesc(Branch::getId);
         Page<Branch> result = branchMapper.selectPage(new Page<>(page, size), qw);
 
@@ -62,24 +74,18 @@ public class BranchService {
 
     /** 填充 BranchVO 的部门关联信息 */
     private BranchVO enrich(Branch b) {
-        BranchVO vo = BranchVO.from(b);
         List<BranchDept> links = branchDeptMapper.selectList(
             new LambdaQueryWrapper<BranchDept>().eq(BranchDept::getBranchId, b.getId()));
-        if (links.isEmpty()) {
-            return BranchVO.builder()
-                    .id(b.getId()).branchNo(b.getBranchNo()).name(b.getName())
-                    .type(b.getType()).leaderId(b.getLeaderId()).phone(b.getPhone())
-                    .city(b.getCity()).status(b.getStatus())
-                    .deptIds(Collections.emptyList()).deptNames(Collections.emptyList())
-                    .build();
-        }
         List<Long> deptIds = links.stream().map(BranchDept::getDeptId).collect(Collectors.toList());
         List<Dept> depts = deptMapper.selectBatchIds(deptIds);
         List<String> deptNames = depts.stream().map(Dept::getName).collect(Collectors.toList());
+        Long primaryDeptId = deptIds.isEmpty() ? null : deptIds.get(0);
+        String primaryDeptName = deptNames.isEmpty() ? null : deptNames.get(0);
         return BranchVO.builder()
                 .id(b.getId()).branchNo(b.getBranchNo()).name(b.getName())
                 .type(b.getType()).leaderId(b.getLeaderId()).phone(b.getPhone())
                 .city(b.getCity()).status(b.getStatus())
+                .deptId(primaryDeptId).deptName(primaryDeptName)
                 .deptIds(deptIds).deptNames(deptNames)
                 .build();
     }
@@ -133,6 +139,10 @@ public class BranchService {
         apply(b, dto);
         b.setStatus(1);
         branchMapper.insert(b);
+        // 附属机构自动关联部门
+        if ("affiliated".equals(dto.getType()) && dto.getDeptId() != null && dto.getDeptId() > 0) {
+            linkDepts(b.getId(), List.of(dto.getDeptId()));
+        }
         return b.getId();
     }
 

@@ -110,7 +110,7 @@ public class UserService {
             List<String> deptNames = deptIds.isEmpty() ? List.of() :
                 jdbcTemplate.queryForList(
                     "SELECT name FROM dept WHERE id IN (" +
-                    String.join(",", deptIds.stream().map(String::valueOf).toList()) + ")",
+                    String.join(",", deptIds.stream().map(String::valueOf).toList()) + ") AND is_deleted = 0",
                     String.class);
 
             vos.add(UserVO.builder()
@@ -200,7 +200,7 @@ public class UserService {
         StringBuilder sql = new StringBuilder(
             "SELECT u.id, u.username, u.real_name, u.phone, u.email, " +
             "u.status, u.created_at, d.name AS dept_name " +
-            "FROM `user` u LEFT JOIN dept d ON d.id = u.dept_id " +
+            "FROM `user` u LEFT JOIN dept d ON d.id = u.dept_id AND d.is_deleted = 0 " +
             "WHERE u.is_super_admin = 0 AND u.is_deleted = 0");
 
         if (!TenantContext.isSuperAdmin()) {
@@ -250,7 +250,7 @@ public class UserService {
                 "SELECT r.name FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
                 String.class, userId);
             List<String> deptNames = jdbcTemplate.queryForList(
-                "SELECT d.name FROM dept d JOIN user_dept ud ON ud.dept_id = d.id WHERE ud.user_id = ?",
+                "SELECT d.name FROM dept d JOIN user_dept ud ON ud.dept_id = d.id WHERE ud.user_id = ? AND d.is_deleted = 0",
                 String.class, userId);
 
             UserExportVO vo = new UserExportVO();

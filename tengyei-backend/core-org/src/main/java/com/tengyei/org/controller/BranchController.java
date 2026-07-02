@@ -25,8 +25,9 @@ public class BranchController {
     @PreAuthorize("hasAuthority('PERM_branch:view')")
     public Result<PageResult<BranchVO>> page(
             @RequestParam(name = "page", defaultValue = "1") long page,
-            @RequestParam(name = "size", defaultValue = "20") long size) {
-        return Result.ok(branchService.page(page, size));
+            @RequestParam(name = "size", defaultValue = "20") long size,
+            @RequestParam(name = "deptId", required = false) Long deptId) {
+        return Result.ok(branchService.page(page, size, deptId));
     }
 
     @PostMapping

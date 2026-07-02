@@ -15,6 +15,7 @@ public class BranchSaveDTO {
     private String district;
     private String address;
     private Long leaderId;
+    private Long deptId;
     private String phone;
     private Integer maxUsers;
 }
