@@ -22,7 +22,7 @@ public class PlatformUserController {
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:user:view')")
-    public Result<List<PlatformUserVO>> list(@RequestParam(required = false) String keyword) {
+    public Result<List<PlatformUserVO>> list(@RequestParam(name = "keyword", required = false) String keyword) {
         return Result.ok(service.listUsers(keyword));
     }
 
