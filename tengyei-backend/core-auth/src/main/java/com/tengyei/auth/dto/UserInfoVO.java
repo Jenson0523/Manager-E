@@ -14,6 +14,8 @@ public class UserInfoVO {
     private String username;
     private String realName;
     private String avatarUrl;
+    private String companyName;
+    private String companyLogo;
     private Boolean isSuperAdmin;
     private String dataScope;
     private List<String> roleCodes;

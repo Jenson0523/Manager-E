@@ -49,6 +49,18 @@ public class UserInfoController {
         List<UserInfoVO.RouteVO> routes = isPlatformTier
                 ? buildPlatformRoutes(permissions) : buildCompanyRoutes(permissions);
 
+        // Query company info for enterprise tenant
+        String companyName = null;
+        String companyLogo = null;
+        if (tenantId != null && tenantId > 0L) {
+            List<Map<String, Object>> compRows = jdbcTemplate.queryForList(
+                "SELECT short_name, logo_url FROM company WHERE id = ?", tenantId);
+            if (!compRows.isEmpty()) {
+                companyName = (String) compRows.get(0).get("short_name");
+                companyLogo = (String) compRows.get(0).get("logo_url");
+            }
+        }
+
         return Result.ok(UserInfoVO.builder()
                 .userId(userId)
                 .tenantId(tenantId)
@@ -56,6 +68,8 @@ public class UserInfoController {
                 .username((String) row.get("username"))
                 .realName((String) row.get("real_name"))
                 .avatarUrl((String) row.get("avatar_url"))
+                .companyName(companyName)
+                .companyLogo(companyLogo)
                 .isSuperAdmin(isSuperAdmin)
                 .dataScope(dataScope != null ? dataScope : "all")
                 .roleCodes(roleCodes)

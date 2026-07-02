@@ -22,6 +22,7 @@ public class CompanyVO {
     private String remark;
     private Integer status;
     private LocalDate expireDate;
+    private String logoUrl;
     @Setter
     private String adminUsername;
     private LocalDateTime createdAt;
@@ -39,6 +40,7 @@ public class CompanyVO {
                 .remark(c.getRemark())
                 .status(c.getStatus())
                 .expireDate(c.getExpireDate())
+                .logoUrl(c.getLogoUrl())
                 .createdAt(c.getCreatedAt())
                 .build();
     }

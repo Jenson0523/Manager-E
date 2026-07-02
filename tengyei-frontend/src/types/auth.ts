@@ -24,6 +24,8 @@ export interface UserInfo {
   username: string
   realName: string
   avatarUrl: string | null
+  companyName: string | null
+  companyLogo: string | null
   isSuperAdmin: boolean
   dataScope: string
   roleCodes: string[]

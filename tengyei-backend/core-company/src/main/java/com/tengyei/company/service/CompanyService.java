@@ -141,6 +141,7 @@ public class CompanyService {
         c.setAdminName(dto.getAdminName());
         c.setAdminPhone(dto.getAdminPhone());
         c.setAdminEmail(dto.getAdminEmail());
+        c.setLogoUrl(dto.getLogoUrl());
         c.setExpireDate(dto.getExpireDate());
         c.setRemark(dto.getRemark());
         companyMapper.updateById(c);

@@ -1,6 +1,11 @@
 spring:
   application:
     name: tengyei-backend
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB
+      max-request-size: 10MB
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
@@ -11,6 +16,9 @@ server:
   port: 8080
   servlet:
     context-path: /
+
+upload:
+  path: /opt/tengyei/uploads
 
 mybatis-plus:
   configuration:

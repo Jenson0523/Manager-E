@@ -17,6 +17,7 @@ public class CompanyUpdateDTO {
     private String adminName;
     private String adminPhone;
     private String adminEmail;
+    private String logoUrl;
     private LocalDate expireDate;
     private String remark;
 }

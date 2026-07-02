@@ -11,6 +11,7 @@ export interface CompanyVO {
   remark?: string
   status: number
   expireDate?: string
+  logoUrl?: string
   createdAt: string
 }
 
@@ -35,4 +36,5 @@ export interface CompanyUpdateDTO {
   adminEmail?: string
   expireDate?: string
   remark?: string
+  logoUrl?: string
 }

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { HomeFilled, OfficeBuilding, Share, User, Lock, Document, Setting } from '@element-plus/icons-vue'
+import { HomeFilled, OfficeBuilding, Share, User, Lock, Document, Setting, Loading } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
+import { ElMessage } from 'element-plus'
+import request from '@/api/request'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -21,7 +23,6 @@ const iconMap: Record<string, Component> = {
   '/company/roles': Lock,
 }
 
-// Backend RouteVO only carries the English program name; map path -> Chinese title.
 const titleMap: Record<string, string> = {
   '/dashboard': '工作台',
   '/admin/companies': '企业管理',
@@ -37,6 +38,73 @@ const titleMap: Record<string, string> = {
 const menuRoutes = computed(() => auth.routes)
 const activePath = computed(() => route.path)
 
+// Brand: company tenant uses company name + logo, platform uses default
+const isCompanyTenant = computed(() => {
+  const tid = auth.userInfo?.tenantId
+  return tid != null && tid > 0
+})
+const brandName = computed(() => {
+  return auth.userInfo?.companyName || '腾飞企业管理'
+})
+const brandLogo = computed(() => {
+  return auth.userInfo?.companyLogo || null
+})
+const brandInitial = computed(() => {
+  const name = brandName.value
+  return name ? name.charAt(0) : '腾'
+})
+
+const logoInputRef = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+
+function triggerLogoUpload() {
+  if (!isCompanyTenant.value) return
+  logoInputRef.value?.click()
+}
+
+async function onLogoSelected(e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
+  const file = files[0]
+
+  // Validate
+  if (file.size > 2 * 1024 * 1024) {
+    ElMessage.error('Logo 大小不能超过 2MB')
+    return
+  }
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  if (!ext || !['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) {
+    ElMessage.error('仅支持 jpg/png/gif/webp/svg 格式')
+    return
+  }
+
+  uploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const logoUrl = await request.post<string, string>('/v1/upload/logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    if (logoUrl) {
+      // Update company logo via company edit API
+      const tenantId = auth.userInfo?.tenantId
+      if (tenantId) {
+        await request.put<string, unknown>(`/v1/companies/${tenantId}`, { logoUrl })
+        // Refresh user info to get new logo
+        await auth.fetchUserInfo()
+        ElMessage.success('Logo 上传成功')
+      }
+    } else {
+      ElMessage.error('上传失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err?.message || '上传失败')
+  } finally {
+    uploading.value = false
+    if (logoInputRef.value) logoInputRef.value.value = ''
+  }
+}
+
 function go(path: string) {
   if (route.path !== path) router.push(path)
 }
@@ -44,9 +112,22 @@ function go(path: string) {
 
 <template>
   <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-logo">腾</div>
-      <span class="brand-text">腾飞企业管理</span>
+    <div class="brand" :class="{ 'is-company': isCompanyTenant }">
+      <div class="brand-logo" @click="triggerLogoUpload" :class="{ 'uploadable': isCompanyTenant }">
+        <img v-if="brandLogo" :src="brandLogo" class="logo-img" alt="logo" />
+        <template v-else>{{ brandInitial }}</template>
+        <div v-if="uploading" class="upload-spinner">
+          <el-icon class="is-loading"><Loading /></el-icon>
+        </div>
+      </div>
+      <span class="brand-text">{{ brandName }}</span>
+      <input
+        ref="logoInputRef"
+        type="file"
+        accept="image/*"
+        style="display: none"
+        @change="onLogoSelected"
+      />
     </div>
     <el-menu
       class="sidebar-menu"
@@ -90,11 +171,39 @@ function go(path: string) {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+.brand-logo.uploadable {
+  cursor: pointer;
+}
+.brand-logo.uploadable:hover {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+}
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.upload-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
 }
 .brand-text {
   color: #fff;
   font-size: 15px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sidebar-menu {
   flex: 1;
