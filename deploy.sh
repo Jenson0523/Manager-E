@@ -3,7 +3,9 @@ set -e
 
 echo "=== [1/6] Pulling latest code ==="
 cd /opt/tengyei-src
+git stash --include-untracked 2>/dev/null || true
 git pull origin main
+git stash drop 2>/dev/null || true
 
 echo "=== [2/6] Copying production config ==="
 cp /opt/tengyei/config/application-prod.yml /opt/tengyei-src/tengyei-backend/app/src/main/resources/application-prod.yml
