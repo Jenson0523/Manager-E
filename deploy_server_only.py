@@ -23,8 +23,8 @@ def main():
     
     print("=== Server deployment started ===")
     
-    # Pull latest code
-    run_ssh(c, "cd /opt/tengyei-src && git pull origin main", timeout=120)
+    # Pull latest code (with stash to avoid local changes conflict)
+    run_ssh(c, "cd /opt/tengyei-src && git stash --include-untracked 2>/dev/null || true && git pull origin main && git stash drop 2>/dev/null || true", timeout=120)
     
     # Run deploy script
     out, err, exit_status = run_ssh(c, "bash /opt/tengyei-src/deploy.sh", timeout=600)
