@@ -4,6 +4,7 @@ import com.tengyei.common.response.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -27,6 +28,7 @@ public class UploadController {
     private String uploadPath;
 
     @PostMapping("/upload/logo")
+    @PreAuthorize("hasAuthority('company:config:update') or hasRole('SUPER_ADMIN')")
     public Result<String> uploadLogo(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
             return Result.fail(422, "上传文件不能为空");

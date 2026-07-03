@@ -43,6 +43,10 @@ const isCompanyTenant = computed(() => {
   const tid = auth.userInfo?.tenantId
   return tid != null && tid > 0
 })
+// Only admin (super admin or company admin) can upload logo
+const canUploadLogo = computed(() => {
+  return isCompanyTenant.value && (auth.userInfo?.isSuperAdmin === true)
+})
 const brandName = computed(() => {
   return auth.userInfo?.companyName || '腾飞企业管理'
 })
@@ -58,7 +62,7 @@ const logoInputRef = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
 
 function triggerLogoUpload() {
-  if (!isCompanyTenant.value) return
+  if (!canUploadLogo.value) return
   logoInputRef.value?.click()
 }
 
@@ -82,9 +86,8 @@ async function onLogoSelected(e: Event) {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    const logoUrl = await request.post<string, string>('/v1/upload/logo', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    // Do NOT set Content-Type manually - axios will auto-set with correct boundary
+    const logoUrl = await request.post<string, string>('/v1/upload/logo', formData)
     if (logoUrl) {
       // Update company logo via company edit API
       const tenantId = auth.userInfo?.tenantId
@@ -113,7 +116,7 @@ function go(path: string) {
 <template>
   <aside class="sidebar">
     <div class="brand" :class="{ 'is-company': isCompanyTenant }">
-      <div class="brand-logo" @click="triggerLogoUpload" :class="{ 'uploadable': isCompanyTenant }">
+      <div class="brand-logo" @click="triggerLogoUpload" :class="{ 'uploadable': canUploadLogo }">
         <img v-if="brandLogo" :src="brandLogo" class="logo-img" alt="logo" />
         <template v-else>{{ brandInitial }}</template>
         <div v-if="uploading" class="upload-spinner">

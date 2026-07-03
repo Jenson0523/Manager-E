@@ -462,7 +462,7 @@ onMounted(() => {
           <el-tree-select
             v-model="branchForm.deptId"
             :data="deptTree"
-            :props="{ label: 'name', value: 'id', children: 'children' }"
+            :props="{ label: 'name', value: 'id', children: 'children' } as any"
             check-strictly
             clearable
             placeholder="选择绑定的根部门"
