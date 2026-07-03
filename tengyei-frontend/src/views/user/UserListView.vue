@@ -198,6 +198,7 @@ async function submitCreate() {
     ElMessage.success('用户创建成功')
     createDialog.value = false
     fetchList()
+    fetchQuota()
   } catch {
     // API error already surfaced by response interceptor
   }
@@ -294,10 +295,16 @@ async function saveRoles() {
   }
 }
 
+const quota = ref<{ used: number; max: number | null }>({ used: 0, max: null })
+async function fetchQuota() {
+  quota.value = await userApi.quota()
+}
+
 onMounted(() => {
   fetchList()
   fetchRoles()
   fetchDepts()
+  fetchQuota()
 })
 </script>
 
@@ -334,6 +341,14 @@ onMounted(() => {
       <el-button :loading="exporting" @click="exportList">导出</el-button>
       <el-button v-if="auth.hasPermission('PERM_user:create')" type="primary" @click="openCreate">新增用户</el-button>
     </div>
+
+    <el-progress
+      v-if="quota.max"
+      :percentage="Math.min(100, Math.round((quota.used / quota.max) * 100))"
+      :status="quota.used >= quota.max ? 'exception' : undefined"
+      :format="() => `人员用量 ${quota.used}/${quota.max}`"
+      style="margin-bottom: 12px"
+    />
 
     <div v-if="selectedIds.length" class="batch-bar">
       <span>已选 {{ selectedIds.length }} 条</span>

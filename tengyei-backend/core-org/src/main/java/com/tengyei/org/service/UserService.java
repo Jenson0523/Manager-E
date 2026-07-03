@@ -131,6 +131,7 @@ public class UserService {
             throw new BusinessException(409, "用户名已存在");
         }
         Long tenantId = TenantContext.getTenantId();
+        checkQuota(tenantId, dto.getBranchId());
         User u = new User();
         u.setTenantId(tenantId);
         u.setUsername(dto.getUsername());
@@ -166,6 +167,46 @@ public class UserService {
         u.setBranchId(dto.getBranchId());
         userMapper.updateById(u);
         saveUserDepts(id, dto.getDeptIds(), dto.getDeptId());
+    }
+
+    /** §9.2 人员/分公司配额校验：max_users 为 NULL 表示不限 */
+    private void checkQuota(Long tenantId, Long branchId) {
+        Integer companyMax = jdbcTemplate.queryForObject(
+            "SELECT max_users FROM company WHERE id = ?", Integer.class, tenantId);
+        if (companyMax != null) {
+            Long used = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM `user` WHERE tenant_id = ? AND is_deleted = 0 AND is_super_admin = 0",
+                Long.class, tenantId);
+            if (used != null && used >= companyMax) {
+                throw new BusinessException(409, "公司人员数已达上限（" + companyMax + "）");
+            }
+        }
+        if (branchId != null) {
+            Integer branchMax = jdbcTemplate.queryForObject(
+                "SELECT max_users FROM branch WHERE id = ?", Integer.class, branchId);
+            if (branchMax != null) {
+                Long used = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM `user` WHERE branch_id = ? AND is_deleted = 0 AND is_super_admin = 0",
+                    Long.class, branchId);
+                if (used != null && used >= branchMax) {
+                    throw new BusinessException(409, "分公司人员数已达上限（" + branchMax + "）");
+                }
+            }
+        }
+    }
+
+    /** 当前租户人员用量，前端用量条用 */
+    public Map<String, Integer> quota() {
+        Long tenantId = TenantContext.getTenantId();
+        Integer max = jdbcTemplate.queryForObject(
+            "SELECT max_users FROM company WHERE id = ?", Integer.class, tenantId);
+        Long used = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM `user` WHERE tenant_id = ? AND is_deleted = 0 AND is_super_admin = 0",
+            Long.class, tenantId);
+        Map<String, Integer> result = new java.util.LinkedHashMap<>();
+        result.put("used", used == null ? 0 : used.intValue());
+        result.put("max", max);
+        return result;
     }
 
     private Long resolvePrimaryDeptId(Long explicitDeptId, List<Long> deptIds) {

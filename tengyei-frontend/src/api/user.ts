@@ -11,6 +11,7 @@ export const userApi = {
     deptId?: number
     roleId?: number
   }) => request.get<never, PageResult<UserVO>>('/v1/users', { params }),
+  quota: () => request.get<never, { used: number; max: number | null }>('/v1/users/quota'),
   create: (data: UserCreateDTO) => request.post<never, IdResult>('/v1/users', data),
   update: (id: number, data: UserUpdateDTO) => request.put<never, void>(`/v1/users/${id}`, data),
   changeStatus: (id: number, status: number) =>

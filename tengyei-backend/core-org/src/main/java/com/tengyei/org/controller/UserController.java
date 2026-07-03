@@ -43,6 +43,12 @@ public class UserController {
         return Result.ok(userService.page(page, size, keyword, deptId, roleId));
     }
 
+    @GetMapping("/quota")
+    @PreAuthorize("hasAuthority('PERM_user:view')")
+    public Result<java.util.Map<String, Integer>> quota() {
+        return Result.ok(userService.quota());
+    }
+
     @GetMapping("/export")
     @PreAuthorize("hasAuthority('PERM_user:view')")
     public void export(
