@@ -102,6 +102,7 @@ public class UserInfoController {
         if (hasAny(permissions, "user:view")) routes.add(route("/company/users", "人员管理"));
         if (hasAny(permissions, "role:view")) routes.add(route("/company/roles", "角色与权限"));
         if (hasAny(permissions, "log:view", "*")) routes.add(route("/admin/audit-logs", "操作日志"));
+        if (hasAny(permissions, "approval:view", "approval:apply")) routes.add(route("/company/approval", "审批中心"));
         return routes;
     }
 

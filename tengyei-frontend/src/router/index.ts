@@ -82,6 +82,12 @@ const router = createRouter({
           component: () => import('@/views/role/RoleView.vue'),
           meta: { title: '角色与权限' },
         },
+        {
+          path: 'company/approval',
+          name: 'Approval',
+          component: () => import('@/views/approval/ApprovalView.vue'),
+          meta: { title: '审批中心' },
+        },
       ],
     },
     { path: '/403', name: 'Forbidden', component: () => import('@/views/403View.vue') },

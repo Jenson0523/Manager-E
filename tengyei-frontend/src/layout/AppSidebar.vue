@@ -21,6 +21,7 @@ const iconMap: Record<string, Component> = {
   '/company/org': Share,
   '/company/users': User,
   '/company/roles': Lock,
+  '/company/approval': Document,
 }
 
 const titleMap: Record<string, string> = {
@@ -33,6 +34,7 @@ const titleMap: Record<string, string> = {
   '/company/org': '组织管理',
   '/company/users': '人员管理',
   '/company/roles': '角色与权限',
+  '/company/approval': '审批中心',
 }
 
 const menuRoutes = computed(() => auth.routes)
