@@ -38,7 +38,7 @@ class PlatformRbacTest {
     void cannotDeleteOwnerAccount() throws Exception {
         String token = ownerToken();
         Long ownerId = jdbc.queryForObject(
-            "SELECT id FROM user WHERE username = 'superadmin'", Long.class);
+            "SELECT id FROM `user` WHERE username = 'superadmin'", Long.class);
         // BusinessException is returned as HTTP 200 with non-zero body code (see GlobalExceptionHandler)
         mockMvc.perform(delete("/api/v1/platform/users/" + ownerId)
                 .header("Authorization", "Bearer " + token))

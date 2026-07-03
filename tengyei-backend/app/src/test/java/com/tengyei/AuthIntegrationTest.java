@@ -76,7 +76,7 @@ class AuthIntegrationTest {
     @Test
     void account_lockout_after_5_failed_attempts() throws Exception {
         jdbcTemplate.update(
-            "UPDATE user SET login_fail_count = 0, locked_until = NULL WHERE username = 'superadmin'");
+            "UPDATE `user` SET login_fail_count = 0, locked_until = NULL WHERE username = 'superadmin'");
         try {
             LoginRequest badReq = new LoginRequest();
             badReq.setUsername("superadmin");
@@ -109,7 +109,7 @@ class AuthIntegrationTest {
                     .andExpect(jsonPath("$.code").value(423));
         } finally {
             jdbcTemplate.update(
-                "UPDATE user SET login_fail_count = 0, locked_until = NULL WHERE username = 'superadmin'");
+                "UPDATE `user` SET login_fail_count = 0, locked_until = NULL WHERE username = 'superadmin'");
         }
     }
 

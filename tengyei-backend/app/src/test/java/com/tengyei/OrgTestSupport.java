@@ -45,7 +45,7 @@ public final class OrgTestSupport {
         KeyHolder uk = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(
-                "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, " +
+                "INSERT INTO `user` (tenant_id, user_no, username, password, real_name, phone, " +
                 "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
                 "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())",
                 Statement.RETURN_GENERATED_KEYS);

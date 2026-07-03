@@ -77,7 +77,7 @@ public class BranchService {
         List<BranchDept> links = branchDeptMapper.selectList(
             new LambdaQueryWrapper<BranchDept>().eq(BranchDept::getBranchId, b.getId()));
         List<Long> deptIds = links.stream().map(BranchDept::getDeptId).collect(Collectors.toList());
-        List<Dept> depts = deptMapper.selectBatchIds(deptIds);
+        List<Dept> depts = deptIds.isEmpty() ? Collections.emptyList() : deptMapper.selectBatchIds(deptIds);
         List<String> deptNames = depts.stream().map(Dept::getName).collect(Collectors.toList());
         Long primaryDeptId = deptIds.isEmpty() ? null : deptIds.get(0);
         String primaryDeptName = deptNames.isEmpty() ? null : deptNames.get(0);

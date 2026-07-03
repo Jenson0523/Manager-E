@@ -39,7 +39,7 @@ class CompanyAdminSeedTest {
         assertEquals(companyPerms, permCount, "company_admin 应拥有全部公司权限");
 
         Long urCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM user_role ur JOIN user u ON u.id = ur.user_id " +
+            "SELECT COUNT(*) FROM user_role ur JOIN `user` u ON u.id = ur.user_id " +
             "WHERE u.tenant_id = ? AND u.is_super_admin = 0", Long.class, companyId);
         assertEquals(1L, urCount, "管理员应挂到 company_admin 角色");
     }
