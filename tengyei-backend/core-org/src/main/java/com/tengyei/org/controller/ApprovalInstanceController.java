@@ -22,7 +22,7 @@ public class ApprovalInstanceController {
     private final ApprovalEngineService engineService;
 
     @PostMapping
-    @PreAuthorize("hasAuthority('PERM_approval:apply')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")
     @Auditable(module = "审批", actionType = "CREATE", description = "发起审批")
     public Result<Map<String, Long>> apply(@Valid @RequestBody ApprovalApplyDTO dto) {
         Long id = engineService.apply(dto, TenantContext.getUserId(), TenantContext.getUserName());
@@ -30,13 +30,13 @@ public class ApprovalInstanceController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_approval:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<ApprovalInstanceVO> detail(@PathVariable Long id) {
         return Result.ok(engineService.detail(id));
     }
 
     @PutMapping("/{id}/act")
-    @PreAuthorize("hasAnyAuthority('PERM_approval:approve','PERM_approval:reject')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:approve','PERM_approval:reject','PERM_platform:approval:approve','PERM_platform:approval:reject')")
     @Auditable(module = "审批", actionType = "UPDATE", description = "审批处理")
     public Result<Void> act(@PathVariable Long id, @Valid @RequestBody ApprovalApproveDTO dto) {
         engineService.act(id, dto.getAction(), dto.getComment(),

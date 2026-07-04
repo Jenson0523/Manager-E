@@ -6,7 +6,13 @@ import { useAuthStore } from '@/stores/auth'
 import type { ApprovalInstanceVO, ApprovalFlowVO } from '@/types/approval'
 
 const auth = useAuthStore()
-const canManage = computed(() => auth.hasPermission('PERM_approval:manage'))
+// 平台层(tenant 0)与公司层权限码并行,任一命中即可
+const canManage = computed(
+  () => auth.hasPermission('PERM_approval:manage') || auth.hasPermission('PERM_platform:approval:manage')
+)
+const canApply = computed(
+  () => auth.hasPermission('PERM_approval:apply') || auth.hasPermission('PERM_platform:approval:apply')
+)
 
 const activeTab = ref('todo')
 const loading = ref(false)
@@ -124,7 +130,7 @@ onMounted(() => loadTab('todo'))
 <template>
   <div class="page">
     <div class="toolbar">
-      <el-button v-if="auth.hasPermission('PERM_approval:apply')" type="primary" @click="openApply">发起审批</el-button>
+      <el-button v-if="canApply" type="primary" @click="openApply">发起审批</el-button>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="(t) => loadTab(t as string)">

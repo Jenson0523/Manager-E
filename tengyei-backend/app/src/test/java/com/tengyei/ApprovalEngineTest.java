@@ -37,6 +37,44 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 平台层(tenant 0)同样可配置流程并走完审批：superadmin 持 PERM_*，审批人指定为自己(id=1) */
+    @Test
+    void platformTier_configureApplyApprove() throws Exception {
+        String superToken = OrgTestSupport.login(mockMvc, objectMapper, "superadmin");
+        String configJson = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"平台审批\"," +
+            "\"approverType\":\"SPECIFIC_USER\",\"resolveMode\":\"FIRST\",\"orderBy\":1," +
+            "\"condition\":null,\"targetUserId\":1}]}").replace("\"", "\\\"");
+
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + superToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"platform_purchase\",\"formName\":\"平台采购\",\"processKey\":\"P_PURCHASE\"," +
+                    "\"configJson\":\"" + configJson + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        MvcResult applied = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + superToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"platform_purchase\",\"formData\":{\"amount\":500}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn();
+        long instanceId = objectMapper.readTree(applied.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        mockMvc.perform(put("/api/v1/approval/instances/" + instanceId + "/act")
+                .header("Authorization", "Bearer " + superToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"APPROVE\",\"comment\":\"ok\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mockMvc.perform(get("/api/v1/approval/instances/" + instanceId)
+                .header("Authorization", "Bearer " + superToken))
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+    }
+
     @Test
     void applyThenApprove_flowsToApproved() throws Exception {
         String configJson = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"指定审批\"," +

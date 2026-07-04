@@ -20,19 +20,19 @@ public class ApprovalTodoController {
     private final ApprovalEngineService engineService;
 
     @GetMapping("/todo")
-    @PreAuthorize("hasAuthority('PERM_approval:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<List<ApprovalInstanceVO>> todo() {
         return Result.ok(engineService.myTodo(TenantContext.getUserId()));
     }
 
     @GetMapping("/my")
-    @PreAuthorize("hasAuthority('PERM_approval:apply')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")
     public Result<List<ApprovalInstanceVO>> my() {
         return Result.ok(engineService.myApplied(TenantContext.getUserId()));
     }
 
     @GetMapping("/done")
-    @PreAuthorize("hasAuthority('PERM_approval:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<List<ApprovalInstanceVO>> done() {
         return Result.ok(engineService.myDone(TenantContext.getUserId()));
     }

@@ -21,20 +21,20 @@ public class ApprovalFlowController {
     private final ApprovalFlowService flowService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERM_approval:manage')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:manage','PERM_platform:approval:manage')")
     public Result<List<ApprovalFlowVO>> list() {
         return Result.ok(flowService.list());
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('PERM_approval:manage')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:manage','PERM_platform:approval:manage')")
     @Auditable(module = "审批流程", actionType = "CREATE", description = "保存审批流程配置")
     public Result<Map<String, Long>> save(@Valid @RequestBody ApprovalFlowSaveDTO dto) {
         return Result.ok(Map.of("id", flowService.save(dto)));
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('PERM_approval:manage')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:manage','PERM_platform:approval:manage')")
     @Auditable(module = "审批流程", actionType = "UPDATE", description = "变更审批流程状态")
     public Result<Void> toggleStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         flowService.toggleStatus(id, body.get("status"));
