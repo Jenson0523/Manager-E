@@ -5,6 +5,7 @@ import type {
   ApprovalApplyDTO,
   ApprovalFlowVO,
   ApprovalFlowSaveDTO,
+  ApprovalStatisticsVO,
 } from '@/types/approval'
 
 export const approvalApi = {
@@ -16,6 +17,9 @@ export const approvalApi = {
     request.post<never, IdResult>('/v1/approval/instances', data),
   act: (id: number, action: 'APPROVE' | 'REJECT', comment?: string) =>
     request.put<never, void>(`/v1/approval/instances/${id}/act`, { action, comment }),
+  transfer: (id: number, targetUserId: number) =>
+    request.put<never, void>(`/v1/approval/instances/${id}/transfer`, { targetUserId }),
+  statistics: () => request.get<never, ApprovalStatisticsVO>('/v1/approval/statistics'),
 
   flows: () => request.get<never, ApprovalFlowVO[]>('/v1/approval/flows'),
   saveFlow: (data: ApprovalFlowSaveDTO) =>

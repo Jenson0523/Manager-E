@@ -28,6 +28,7 @@ public class ApprovalInstanceVO {
         private Long id;
         private String nodeKey;
         private String nodeName;
+        private Long approverId;
         private String approverName;
         private String status;
         private String result;

@@ -31,6 +31,12 @@ public class ApprovalTodoController {
         return Result.ok(engineService.myApplied(TenantContext.getUserId()));
     }
 
+    @GetMapping("/statistics")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:manage','PERM_platform:approval:manage')")
+    public Result<java.util.Map<String, Object>> statistics() {
+        return Result.ok(engineService.statistics());
+    }
+
     @GetMapping("/done")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<List<ApprovalInstanceVO>> done() {

@@ -35,6 +35,15 @@ public class ApprovalInstanceController {
         return Result.ok(engineService.detail(id));
     }
 
+    @PutMapping("/{id}/transfer")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:transfer','PERM_platform:approval:transfer')")
+    @Auditable(module = "审批", actionType = "UPDATE", description = "审批转交")
+    public Result<Void> transfer(@PathVariable Long id, @RequestBody Map<String, Long> body) {
+        engineService.transfer(id, body.get("targetUserId"),
+            TenantContext.getUserId(), TenantContext.getUserName());
+        return Result.ok();
+    }
+
     @PutMapping("/{id}/act")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:approve','PERM_approval:reject','PERM_platform:approval:approve','PERM_platform:approval:reject')")
     @Auditable(module = "审批", actionType = "UPDATE", description = "审批处理")

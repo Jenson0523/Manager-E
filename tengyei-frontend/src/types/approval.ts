@@ -2,6 +2,7 @@ export interface ApprovalNodeVO {
   id: number
   nodeKey: string
   nodeName: string
+  approverId?: number
   approverName?: string
   status: string
   result?: string
@@ -44,4 +45,12 @@ export interface ApprovalFlowSaveDTO {
   formName: string
   processKey: string
   configJson: string
+}
+
+export interface ApprovalStatisticsVO {
+  total: number
+  byStatus: Record<string, number>
+  byFormType: Record<string, number>
+  rejectionRate: number
+  avgDurationMinutes: number
 }

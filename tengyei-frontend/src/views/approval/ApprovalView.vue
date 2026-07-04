@@ -6,7 +6,7 @@ import { roleApi } from '@/api/rbac'
 import { userApi } from '@/api/user'
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
-import type { ApprovalInstanceVO, ApprovalFlowVO } from '@/types/approval'
+import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO } from '@/types/approval'
 
 const auth = useAuthStore()
 // 平台层(tenant 0)与公司层权限码并行,任一命中即可
@@ -16,6 +16,9 @@ const canManage = computed(
 const canApply = computed(
   () => auth.hasPermission('PERM_approval:apply') || auth.hasPermission('PERM_platform:approval:apply')
 )
+const canTransfer = computed(
+  () => auth.hasPermission('PERM_approval:transfer') || auth.hasPermission('PERM_platform:approval:transfer')
+)
 
 const activeTab = ref('todo')
 const loading = ref(false)
@@ -23,6 +26,7 @@ const todoList = ref<ApprovalInstanceVO[]>([])
 const myList = ref<ApprovalInstanceVO[]>([])
 const doneList = ref<ApprovalInstanceVO[]>([])
 const flowList = ref<ApprovalFlowVO[]>([])
+const stats = ref<ApprovalStatisticsVO | null>(null)
 
 async function loadTab(tab: string) {
   loading.value = true
@@ -31,6 +35,7 @@ async function loadTab(tab: string) {
     else if (tab === 'my') myList.value = await approvalApi.my()
     else if (tab === 'done') doneList.value = await approvalApi.done()
     else if (tab === 'flows') flowList.value = await approvalApi.flows()
+    else if (tab === 'stats') stats.value = await approvalApi.statistics()
   } finally {
     loading.value = false
   }
@@ -80,6 +85,31 @@ async function act(action: 'APPROVE' | 'REJECT') {
   if (!detail.value) return
   await approvalApi.act(detail.value.id, action, actComment.value)
   ElMessage.success(action === 'APPROVE' ? '已通过' : '已驳回')
+  detailDialog.value = false
+  loadTab(activeTab.value)
+}
+
+/* 转交 */
+const isMyTurn = computed(() =>
+  detail.value?.nodes.some(
+    (n) => n.status === 'APPROVING' && n.approverId === auth.userInfo?.userId
+  ) ?? false
+)
+const transferDialog = ref(false)
+const transferTarget = ref<number>()
+async function openTransfer() {
+  transferTarget.value = undefined
+  if (!userOptions.value.length) await loadFlowRefs()
+  transferDialog.value = true
+}
+async function submitTransfer() {
+  if (!detail.value || !transferTarget.value) {
+    ElMessage.error('请选择转交对象')
+    return
+  }
+  await approvalApi.transfer(detail.value.id, transferTarget.value)
+  ElMessage.success('已转交')
+  transferDialog.value = false
   detailDialog.value = false
   loadTab(activeTab.value)
 }
@@ -251,6 +281,21 @@ onMounted(() => loadTab('todo'))
         </el-table>
       </el-tab-pane>
 
+      <el-tab-pane v-if="canManage" label="统计" name="stats">
+        <div v-if="stats" v-loading="loading" class="stats-grid">
+          <div class="stat-card"><div class="stat-label">审批总数</div><div class="stat-value">{{ stats.total }}</div></div>
+          <div class="stat-card"><div class="stat-label">审批中</div><div class="stat-value">{{ stats.byStatus.PENDING ?? 0 }}</div></div>
+          <div class="stat-card"><div class="stat-label">已通过</div><div class="stat-value">{{ stats.byStatus.APPROVED ?? 0 }}</div></div>
+          <div class="stat-card"><div class="stat-label">已驳回</div><div class="stat-value">{{ stats.byStatus.REJECTED ?? 0 }}</div></div>
+          <div class="stat-card"><div class="stat-label">驳回率</div><div class="stat-value">{{ stats.rejectionRate }}%</div></div>
+          <div class="stat-card"><div class="stat-label">平均审批时长(分钟)</div><div class="stat-value">{{ stats.avgDurationMinutes }}</div></div>
+        </div>
+        <el-table v-if="stats" :data="Object.entries(stats.byFormType).map(([t, c]) => ({ formType: t, count: c }))" stripe style="margin-top: 16px">
+          <el-table-column prop="formType" label="表单类型" width="200" />
+          <el-table-column prop="count" label="数量" width="120" />
+        </el-table>
+      </el-tab-pane>
+
       <el-tab-pane v-if="canManage" label="流程管理" name="flows">
         <div class="flow-toolbar">
           <el-button type="primary" size="small" @click="openFlowCreate">新建流程</el-button>
@@ -315,9 +360,24 @@ onMounted(() => loadTab('todo'))
       <template #footer>
         <el-button @click="detailDialog = false">关闭</el-button>
         <template v-if="detail?.status === 'PENDING'">
+          <el-button v-if="isMyTurn && canTransfer" @click="openTransfer">转交</el-button>
           <el-button type="danger" @click="act('REJECT')">驳回</el-button>
           <el-button type="primary" @click="act('APPROVE')">通过</el-button>
         </template>
+      </template>
+    </el-dialog>
+
+    <!-- 转交 -->
+    <el-dialog v-model="transferDialog" title="转交审批" width="400px">
+      <el-select v-model="transferTarget" placeholder="选择转交对象" filterable style="width: 100%">
+        <el-option
+          v-for="u in userOptions.filter((o) => o.id !== auth.userInfo?.userId)"
+          :key="u.id" :label="u.name" :value="u.id"
+        />
+      </el-select>
+      <template #footer>
+        <el-button @click="transferDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitTransfer">确定转交</el-button>
       </template>
     </el-dialog>
 
@@ -408,6 +468,27 @@ onMounted(() => loadTab('todo'))
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.8;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.stat-card {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #fafbfc;
+}
+.stat-label {
+  font-size: 13px;
+  color: #6b7280;
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 4px;
 }
 .node-editor {
   border-top: 1px solid #ebeef5;

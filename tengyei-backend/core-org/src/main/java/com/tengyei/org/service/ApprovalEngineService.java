@@ -253,6 +253,79 @@ public class ApprovalEngineService {
             .toList();
     }
 
+    /** 转交：当前审批人把自己的待办节点移交给同租户其他用户 */
+    @Transactional
+    public void transfer(Long instanceId, Long targetUserId, Long operatorId, String operatorName) {
+        Long tenantId = TenantContext.getTenantId();
+        WfInstance instance = instanceMapper.selectById(instanceId);
+        if (instance == null || !instance.getTenantId().equals(tenantId)) {
+            throw new BusinessException(404, "审批实例不存在");
+        }
+        if (!"PENDING".equals(instance.getStatus())) {
+            throw new BusinessException(409, "该审批已结束，无法转交");
+        }
+        List<WfNode> active = nodeMapper.selectList(new LambdaQueryWrapper<WfNode>()
+            .eq(WfNode::getInstanceId, instanceId)
+            .eq(WfNode::getNodeKey, instance.getCurrentNode())
+            .eq(WfNode::getStatus, "APPROVING"));
+        WfNode node = active.stream()
+            .filter(n -> operatorId.equals(n.getApproverId()))
+            .findFirst()
+            .orElseThrow(() -> new BusinessException(403, "无权转交该审批"));
+        if (active.stream().anyMatch(n -> targetUserId.equals(n.getApproverId()))) {
+            throw new BusinessException(409, "目标用户已是该节点审批人");
+        }
+        List<String> names = jdbcTemplate.queryForList(
+            "SELECT real_name FROM `user` WHERE id = ? AND tenant_id = ? AND is_deleted = 0 AND status = 1",
+            String.class, targetUserId, tenantId);
+        if (names.isEmpty()) throw new BusinessException(422, "转交目标用户不存在或已停用");
+
+        node.setApproverId(targetUserId);
+        node.setApproverName(names.get(0));
+        nodeMapper.updateById(node);
+
+        WfRecord record = new WfRecord();
+        record.setTenantId(tenantId);
+        record.setInstanceId(instanceId);
+        record.setNodeId(node.getId());
+        record.setOperatorId(operatorId);
+        record.setOperatorName(operatorName);
+        record.setAction("TRANSFER");
+        record.setTargetUserId(targetUserId);
+        record.setBeforeStatus("PENDING");
+        record.setAfterStatus("PENDING");
+        recordMapper.insert(record);
+    }
+
+    /** 统计：租户维度汇总(状态分布/驳回率/平均时长/表单分布)。ponytail: 内存聚合,量大再下推 SQL */
+    public Map<String, Object> statistics() {
+        List<WfInstance> all = instanceMapper.selectList(new LambdaQueryWrapper<WfInstance>()
+            .eq(WfInstance::getTenantId, TenantContext.getTenantId()));
+        long total = all.size();
+        Map<String, Long> byStatus = new java.util.LinkedHashMap<>();
+        Map<String, Long> byFormType = new java.util.LinkedHashMap<>();
+        long finished = 0, rejected = 0, durationMinutesSum = 0, durationCount = 0;
+        for (WfInstance i : all) {
+            byStatus.merge(i.getStatus(), 1L, Long::sum);
+            byFormType.merge(i.getFormType(), 1L, Long::sum);
+            if ("APPROVED".equals(i.getStatus()) || "REJECTED".equals(i.getStatus())) {
+                finished++;
+                if ("REJECTED".equals(i.getStatus())) rejected++;
+                if (i.getCreatedAt() != null && i.getUpdatedAt() != null) {
+                    durationMinutesSum += java.time.Duration.between(i.getCreatedAt(), i.getUpdatedAt()).toMinutes();
+                    durationCount++;
+                }
+            }
+        }
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("total", total);
+        result.put("byStatus", byStatus);
+        result.put("byFormType", byFormType);
+        result.put("rejectionRate", finished == 0 ? 0 : Math.round(rejected * 1000.0 / finished) / 10.0);
+        result.put("avgDurationMinutes", durationCount == 0 ? 0 : durationMinutesSum / durationCount);
+        return result;
+    }
+
     private ApprovalInstanceVO toVO(WfInstance i, List<WfNode> nodes) {
         return ApprovalInstanceVO.builder()
             .id(i.getId()).instanceNo(i.getInstanceNo()).formType(i.getFormType())
@@ -261,7 +334,8 @@ public class ApprovalEngineService {
             .createdAt(i.getCreatedAt())
             .nodes(nodes.stream().map(n -> ApprovalInstanceVO.NodeVO.builder()
                 .id(n.getId()).nodeKey(n.getNodeKey()).nodeName(n.getNodeName())
-                .approverName(n.getApproverName()).status(n.getStatus()).result(n.getResult())
+                .approverId(n.getApproverId()).approverName(n.getApproverName())
+                .status(n.getStatus()).result(n.getResult())
                 .comment(n.getComment()).actionAt(n.getActionAt()).build())
                 .toList())
             .build();

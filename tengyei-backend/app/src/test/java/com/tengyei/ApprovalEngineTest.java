@@ -37,6 +37,67 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 转交：A 把待办转给 B,B 审批通过;统计接口返回聚合数据 */
+    @Test
+    void transferThenStatistics() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String tokenA = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        String userB = "recv_" + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, " +
+            "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
+            "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())",
+            seeded.tenantId(), "U-RECV", userB, OrgTestSupport.ADMIN_PWD_HASH, "接收人B", "13933334444");
+        Long uidB = jdbcTemplate.queryForObject("SELECT id FROM user WHERE username = ?", Long.class, userB);
+        jdbcTemplate.update("INSERT INTO user_role (user_id, role_id, created_at) VALUES (?,?,NOW())",
+            uidB, seeded.roleId());
+        String tokenB = OrgTestSupport.login(mockMvc, objectMapper, userB);
+
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"trans\",\"formName\":\"转交单\",\"processKey\":\"TRANS\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"trans\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long id = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // A 转交给 B
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/transfer")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetUserId\":" + uidB + "}"))
+                .andExpect(jsonPath("$.code").value(0));
+        // A 已无权处理,B 可通过
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/act")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"APPROVE\"}"))
+                .andExpect(jsonPath("$.code").value(403));
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/act")
+                .header("Authorization", "Bearer " + tokenB)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"APPROVE\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+
+        // 统计
+        mockMvc.perform(get("/api/v1/approval/statistics")
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.byStatus.APPROVED").value(1));
+    }
+
     /** 会签(ALL)：角色下两人须全部通过；或签(ANYONE)：一人通过即整单通过 */
     @Test
     void roleNode_allAndAnyoneModes() throws Exception {
