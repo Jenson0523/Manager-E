@@ -54,9 +54,9 @@ public class UserInfoController {
         String companyLogo = null;
         if (tenantId != null && tenantId > 0L) {
             List<Map<String, Object>> compRows = jdbcTemplate.queryForList(
-                "SELECT name, logo_url FROM company WHERE id = ?", tenantId);
+                "SELECT full_name, logo_url FROM company WHERE id = ?", tenantId);
             if (!compRows.isEmpty()) {
-                companyName = (String) compRows.get(0).get("name");
+                companyName = (String) compRows.get(0).get("full_name");
                 companyLogo = (String) compRows.get(0).get("logo_url");
             }
         }
