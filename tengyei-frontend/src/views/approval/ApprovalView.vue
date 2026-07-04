@@ -2,6 +2,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { approvalApi } from '@/api/approval'
+import { roleApi } from '@/api/rbac'
+import { userApi } from '@/api/user'
+import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
 import type { ApprovalInstanceVO, ApprovalFlowVO } from '@/types/approval'
 
@@ -81,37 +84,96 @@ async function act(action: 'APPROVE' | 'REJECT') {
   loadTab(activeTab.value)
 }
 
-/* 流程管理 */
+/* 流程管理：结构化节点编辑器 */
+interface NodeDraft {
+  name: string
+  approverType: string
+  resolveMode: string
+  condition: string
+  targetUserId?: number
+  targetRoleId?: number
+}
+const APPROVER_TYPES = [
+  { value: 'LEADER', label: '直属上级' },
+  { value: 'DEPT_LEADER', label: '部门负责人' },
+  { value: 'SPECIFIC_USER', label: '指定人员' },
+  { value: 'ROLE', label: '指定角色' },
+  { value: 'SELF_APPROVE', label: '自动通过(备案)' },
+]
 const flowDialog = ref(false)
-const flowForm = reactive({
-  formType: '',
-  formName: '',
-  processKey: '',
-  configJson: JSON.stringify(
-    {
-      nodes: [
-        { key: 'node_leader', name: '直属上级审批', approverType: 'LEADER', resolveMode: 'FIRST', orderBy: 1, condition: null },
-      ],
-    },
-    null,
-    2
-  ),
-})
+const flowForm = reactive({ formType: '', formName: '', processKey: '' })
+const flowNodes = ref<NodeDraft[]>([])
+const userOptions = ref<{ id: number; name: string }[]>([])
+const roleOptions = ref<{ id: number; name: string }[]>([])
+
+function blankNode(): NodeDraft {
+  return { name: '', approverType: 'LEADER', resolveMode: 'FIRST', condition: '' }
+}
+async function loadFlowRefs() {
+  const isPlatform = auth.userInfo?.tenantId === 0
+  if (isPlatform) {
+    const [roles, users] = await Promise.all([platformRoleApi.list(), platformUserApi.list({})])
+    roleOptions.value = roles.map((r) => ({ id: r.id, name: r.name }))
+    userOptions.value = users.map((u) => ({ id: u.id, name: u.realName }))
+  } else {
+    const [roles, page] = await Promise.all([roleApi.list(), userApi.page({ page: 1, size: 200 })])
+    roleOptions.value = roles.map((r) => ({ id: r.id, name: r.name }))
+    userOptions.value = page.records.map((u) => ({ id: u.id, name: u.realName }))
+  }
+}
 function openFlowCreate() {
   flowForm.formType = ''
   flowForm.formName = ''
   flowForm.processKey = ''
+  flowNodes.value = [blankNode()]
+  loadFlowRefs()
   flowDialog.value = true
 }
 function openFlowEdit(f: ApprovalFlowVO) {
   flowForm.formType = f.formType
   flowForm.formName = f.formName
   flowForm.processKey = f.processKey
-  flowForm.configJson = f.configJson
+  try {
+    const parsed = JSON.parse(f.configJson) as { nodes: Record<string, unknown>[] }
+    flowNodes.value = (parsed.nodes ?? []).map((n) => ({
+      name: (n.name as string) ?? '',
+      approverType: (n.approverType as string) ?? 'LEADER',
+      resolveMode: (n.resolveMode as string) ?? 'FIRST',
+      condition: (n.condition as string) ?? '',
+      targetUserId: n.targetUserId as number | undefined,
+      targetRoleId: n.targetRoleId as number | undefined,
+    }))
+  } catch {
+    flowNodes.value = [blankNode()]
+  }
+  loadFlowRefs()
   flowDialog.value = true
 }
+function moveNode(i: number, delta: number) {
+  const j = i + delta
+  if (j < 0 || j >= flowNodes.value.length) return
+  const arr = flowNodes.value
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+}
 async function submitFlow() {
-  await approvalApi.saveFlow({ ...flowForm })
+  for (const [i, n] of flowNodes.value.entries()) {
+    if (!n.name) { ElMessage.error(`第 ${i + 1} 个节点缺少名称`); return }
+    if (n.approverType === 'SPECIFIC_USER' && !n.targetUserId) { ElMessage.error(`第 ${i + 1} 个节点需选择指定人员`); return }
+    if (n.approverType === 'ROLE' && !n.targetRoleId) { ElMessage.error(`第 ${i + 1} 个节点需选择角色`); return }
+  }
+  const configJson = JSON.stringify({
+    nodes: flowNodes.value.map((n, i) => ({
+      key: `node_${i + 1}`,
+      name: n.name,
+      approverType: n.approverType,
+      resolveMode: n.approverType === 'ROLE' ? n.resolveMode : 'FIRST',
+      orderBy: i + 1,
+      condition: n.condition || null,
+      targetUserId: n.approverType === 'SPECIFIC_USER' ? n.targetUserId : undefined,
+      targetRoleId: n.approverType === 'ROLE' ? n.targetRoleId : undefined,
+    })),
+  })
+  await approvalApi.saveFlow({ ...flowForm, configJson })
   ElMessage.success('已保存')
   flowDialog.value = false
   loadTab('flows')
@@ -259,8 +321,8 @@ onMounted(() => loadTab('todo'))
       </template>
     </el-dialog>
 
-    <!-- 流程配置 -->
-    <el-dialog v-model="flowDialog" title="审批流程配置" width="560px">
+    <!-- 流程配置：可视化节点编辑 -->
+    <el-dialog v-model="flowDialog" title="审批流程配置" width="720px">
       <el-form label-width="90px">
         <el-form-item label="表单类型">
           <el-input v-model="flowForm.formType" placeholder="如 leave" />
@@ -271,10 +333,48 @@ onMounted(() => loadTab('todo'))
         <el-form-item label="流程标识">
           <el-input v-model="flowForm.processKey" placeholder="如 LEAVE_APPROVAL" />
         </el-form-item>
-        <el-form-item label="节点配置">
-          <el-input v-model="flowForm.configJson" type="textarea" :rows="12" />
-        </el-form-item>
       </el-form>
+
+      <div class="node-editor">
+        <div v-for="(n, i) in flowNodes" :key="i" class="node-card">
+          <div class="node-head">
+            <span class="node-index">节点 {{ i + 1 }}</span>
+            <span class="node-actions">
+              <el-button link :disabled="i === 0" @click="moveNode(i, -1)">↑</el-button>
+              <el-button link :disabled="i === flowNodes.length - 1" @click="moveNode(i, 1)">↓</el-button>
+              <el-button link type="danger" :disabled="flowNodes.length === 1" @click="flowNodes.splice(i, 1)">删除</el-button>
+            </span>
+          </div>
+          <div class="node-row">
+            <el-input v-model="n.name" placeholder="节点名称,如 直属上级审批" style="width: 200px" />
+            <el-select v-model="n.approverType" style="width: 150px">
+              <el-option v-for="t in APPROVER_TYPES" :key="t.value" :label="t.label" :value="t.value" />
+            </el-select>
+            <el-select
+              v-if="n.approverType === 'SPECIFIC_USER'"
+              v-model="n.targetUserId" placeholder="选择人员" filterable style="width: 150px"
+            >
+              <el-option v-for="u in userOptions" :key="u.id" :label="u.name" :value="u.id" />
+            </el-select>
+            <el-select
+              v-if="n.approverType === 'ROLE'"
+              v-model="n.targetRoleId" placeholder="选择角色" style="width: 150px"
+            >
+              <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
+            </el-select>
+            <el-select v-if="n.approverType === 'ROLE'" v-model="n.resolveMode" style="width: 120px">
+              <el-option label="单人审批" value="FIRST" />
+              <el-option label="会签(全部)" value="ALL" />
+              <el-option label="或签(任一)" value="ANYONE" />
+            </el-select>
+          </div>
+          <div class="node-row">
+            <el-input v-model="n.condition" placeholder="生效条件(可空),如 form.days >= 3" style="width: 320px" />
+          </div>
+        </div>
+        <el-button style="margin-top: 8px" @click="flowNodes.push(blankNode())">+ 添加节点</el-button>
+      </div>
+
       <template #footer>
         <el-button @click="flowDialog = false">取消</el-button>
         <el-button type="primary" @click="submitFlow">保存</el-button>
@@ -308,5 +408,33 @@ onMounted(() => loadTab('todo'))
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.8;
+}
+.node-editor {
+  border-top: 1px solid #ebeef5;
+  padding-top: 12px;
+}
+.node-card {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fafbfc;
+}
+.node-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.node-index {
+  font-weight: 600;
+  font-size: 13px;
+  color: #374151;
+}
+.node-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
 }
 </style>

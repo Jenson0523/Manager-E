@@ -108,14 +108,16 @@ public class ApprovalEngineService {
             throw new BusinessException(409, "该审批已结束，无法再操作");
         }
 
-        WfNode node = nodeMapper.selectOne(new LambdaQueryWrapper<WfNode>()
+        // 会签/或签下同一节点 key 有多行（每审批人一行）
+        List<WfNode> active = nodeMapper.selectList(new LambdaQueryWrapper<WfNode>()
             .eq(WfNode::getInstanceId, instanceId)
             .eq(WfNode::getNodeKey, instance.getCurrentNode())
             .eq(WfNode::getStatus, "APPROVING"));
-        if (node == null) throw new BusinessException(409, "当前节点状态异常，请刷新重试");
-        if (!node.getApproverId().equals(operatorId)) {
-            throw new BusinessException(403, "无权处理该审批");
-        }
+        if (active.isEmpty()) throw new BusinessException(409, "当前节点状态异常，请刷新重试");
+        WfNode node = active.stream()
+            .filter(n -> operatorId.equals(n.getApproverId()))
+            .findFirst()
+            .orElseThrow(() -> new BusinessException(403, "无权处理该审批"));
 
         String before = instance.getStatus();
         node.setResult(action);
@@ -126,14 +128,28 @@ public class ApprovalEngineService {
         nodeMapper.updateById(node);
 
         if ("REJECT".equals(action)) {
+            // 任一人驳回即整单驳回，未处理的节点全部作废
             instance.setStatus("REJECTED");
             instance.setCurrentNode(null);
             instanceMapper.updateById(instance);
             jdbcTemplate.update(
-                "UPDATE wf_node SET status = 'CANCELED' WHERE instance_id = ? AND status = 'WAITING'",
+                "UPDATE wf_node SET status = 'CANCELED' WHERE instance_id = ? AND status IN ('WAITING','APPROVING')",
                 instanceId);
         } else {
-            advance(instance, instance.getApplicantId());
+            boolean siblingsPending = active.stream()
+                .anyMatch(n -> !n.getId().equals(node.getId()));
+            if ("ALL".equals(node.getResolveMode()) && siblingsPending) {
+                // 会签：等其余审批人，停留本节点
+            } else {
+                if (siblingsPending) {
+                    // 或签：一人通过，其余作废
+                    jdbcTemplate.update(
+                        "UPDATE wf_node SET status = 'CANCELED', result = 'SKIPPED' " +
+                        "WHERE instance_id = ? AND node_key = ? AND status = 'APPROVING'",
+                        instanceId, node.getNodeKey());
+                }
+                advance(instance, instance.getApplicantId());
+            }
         }
         writeRecord(instanceId, node.getId(), operatorId, operatorName, action, comment, before, instance.getStatus());
     }
@@ -152,19 +168,40 @@ public class ApprovalEngineService {
                 instanceMapper.updateById(instance);
                 return;
             }
-            ApprovalResolverService.Approver approver = resolverService.resolve(
+            List<ApprovalResolverService.Approver> approvers = resolverService.resolveAll(
                 next.getApproverType(), next.getTargetUserId(), next.getTargetRoleId(), applicantId);
-            if (approver == null) {
+            if (approvers.isEmpty()) {
                 next.setStatus("APPROVED");
                 next.setResult("AUTO");
                 next.setActionAt(LocalDateTime.now());
                 nodeMapper.updateById(next);
                 continue;
             }
-            next.setApproverId(approver.id());
-            next.setApproverName(approver.name());
+            String mode = next.getResolveMode();
+            boolean multi = ("ALL".equals(mode) || "ANYONE".equals(mode)) && approvers.size() > 1;
+            next.setApproverId(approvers.get(0).id());
+            next.setApproverName(approvers.get(0).name());
             next.setStatus("APPROVING");
             nodeMapper.updateById(next);
+            if (multi) {
+                // 会签/或签：每位审批人一行,同 node_key 分组
+                for (int i = 1; i < approvers.size(); i++) {
+                    WfNode sibling = new WfNode();
+                    sibling.setTenantId(next.getTenantId());
+                    sibling.setInstanceId(next.getInstanceId());
+                    sibling.setNodeKey(next.getNodeKey());
+                    sibling.setNodeName(next.getNodeName());
+                    sibling.setApproverType(next.getApproverType());
+                    sibling.setTargetUserId(next.getTargetUserId());
+                    sibling.setTargetRoleId(next.getTargetRoleId());
+                    sibling.setResolveMode(mode);
+                    sibling.setNodeOrder(next.getNodeOrder());
+                    sibling.setApproverId(approvers.get(i).id());
+                    sibling.setApproverName(approvers.get(i).name());
+                    sibling.setStatus("APPROVING");
+                    nodeMapper.insert(sibling);
+                }
+            }
             instance.setCurrentNode(next.getNodeKey());
             instanceMapper.updateById(instance);
             return;
