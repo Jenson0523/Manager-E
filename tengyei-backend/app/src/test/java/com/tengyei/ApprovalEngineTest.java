@@ -37,6 +37,54 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 消息中心:待办通知审批人,通过后通知申请人;已读/全读 */
+    @Test
+    void noticesFlowWithApproval() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String token = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"ntc\",\"formName\":\"通知单\",\"processKey\":\"NTC\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"ntc\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long id = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // 审批人(=自己)应收到待办通知
+        mockMvc.perform(get("/api/v1/notices/unread-count")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.count").value(1));
+        mockMvc.perform(get("/api/v1/notices")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data[0].type").value("APPROVAL_TODO"));
+
+        // 通过后申请人收到结果通知
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/act")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"APPROVE\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/notices/unread-count")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.count").value(2));
+
+        // 全部已读
+        mockMvc.perform(put("/api/v1/notices/read-all")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/notices/unread-count")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.data.count").value(0));
+    }
+
     /** 表单字段定义随流程保存,发起人通过 /forms 取回用于动态渲染 */
     @Test
     void formFieldsRoundTrip() throws Exception {

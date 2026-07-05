@@ -45,6 +45,7 @@ public class ApprovalEngineService {
     private final WfRecordMapper recordMapper;
     private final WfDelegateMapper delegateMapper;
     private final ApprovalResolverService resolverService;
+    private final NoticeService noticeService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -139,6 +140,11 @@ public class ApprovalEngineService {
             jdbcTemplate.update(
                 "UPDATE wf_node SET status = 'CANCELED' WHERE instance_id = ? AND status IN ('WAITING','APPROVING')",
                 instanceId);
+            noticeService.send(tenantId, instance.getApplicantId(),
+                "APPROVAL_RESULT", "审批被驳回",
+                "你发起的审批 " + instance.getInstanceNo() + " 被 " + operatorName + " 驳回"
+                    + (comment != null && !comment.isBlank() ? "：" + comment : ""),
+                "approval", instanceId);
         } else {
             boolean siblingsPending = active.stream()
                 .anyMatch(n -> !n.getId().equals(node.getId()));
@@ -170,6 +176,10 @@ public class ApprovalEngineService {
                 instance.setStatus("APPROVED");
                 instance.setCurrentNode(null);
                 instanceMapper.updateById(instance);
+                noticeService.send(instance.getTenantId(), instance.getApplicantId(),
+                    "APPROVAL_RESULT", "审批已通过",
+                    "你发起的审批 " + instance.getInstanceNo() + " 已全部通过",
+                    "approval", instance.getId());
                 return;
             }
             List<ApprovalResolverService.Approver> approvers = resolverService.resolveAll(
@@ -213,6 +223,12 @@ public class ApprovalEngineService {
             }
             instance.setCurrentNode(next.getNodeKey());
             instanceMapper.updateById(instance);
+            for (ApprovalResolverService.Approver a : (multi ? approvers : approvers.subList(0, 1))) {
+                noticeService.send(instance.getTenantId(), a.id(),
+                    "APPROVAL_TODO", "有新的待办审批",
+                    instance.getApplicantName() + " 提交的审批 " + instance.getInstanceNo() + " 待你处理",
+                    "approval", instance.getId());
+            }
             return;
         }
     }
@@ -316,6 +332,11 @@ public class ApprovalEngineService {
         record.setBeforeStatus("PENDING");
         record.setAfterStatus("PENDING");
         recordMapper.insert(record);
+
+        noticeService.send(tenantId, targetUserId,
+            "APPROVAL_TODO", "有转交给你的审批",
+            operatorName + " 将审批 " + instance.getInstanceNo() + " 转交给你处理",
+            "approval", instanceId);
     }
 
     /** 我的代理规则(一人一条),无则 null */
