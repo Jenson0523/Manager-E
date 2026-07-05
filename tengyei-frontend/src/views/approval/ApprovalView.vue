@@ -6,7 +6,7 @@ import { roleApi } from '@/api/rbac'
 import { userApi } from '@/api/user'
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
-import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO } from '@/types/approval'
+import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO } from '@/types/approval'
 
 const auth = useAuthStore()
 // 平台层(tenant 0)与公司层权限码并行,任一命中即可
@@ -19,6 +19,10 @@ const canApply = computed(
 const canTransfer = computed(
   () => auth.hasPermission('PERM_approval:transfer') || auth.hasPermission('PERM_platform:approval:transfer')
 )
+const canDelegate = computed(
+  () => auth.hasPermission('PERM_approval:delegate') || auth.hasPermission('PERM_platform:approval:delegate')
+)
+const isOverdue = (t?: string) => !!t && new Date(t) < new Date()
 
 const activeTab = ref('todo')
 const loading = ref(false)
@@ -114,6 +118,28 @@ async function submitTransfer() {
   loadTab(activeTab.value)
 }
 
+/* 代理设置(一人一条,休假期间由代理人审批) */
+const delegateDialog = ref(false)
+const delegateForm = reactive<ApprovalDelegateVO>({ delegateId: 0, startAt: '', endAt: '', status: 1 })
+async function openDelegate() {
+  if (!userOptions.value.length) await loadFlowRefs()
+  const cur = await approvalApi.delegateGet()
+  if (cur) Object.assign(delegateForm, {
+    delegateId: cur.delegateId, startAt: cur.startAt, endAt: cur.endAt, status: cur.status,
+  })
+  else Object.assign(delegateForm, { delegateId: 0, startAt: '', endAt: '', status: 1 })
+  delegateDialog.value = true
+}
+async function submitDelegate() {
+  if (!delegateForm.delegateId || !delegateForm.startAt || !delegateForm.endAt) {
+    ElMessage.error('请选择代理人和起止时间')
+    return
+  }
+  await approvalApi.delegateSave({ ...delegateForm })
+  ElMessage.success('代理设置已保存')
+  delegateDialog.value = false
+}
+
 /* 流程管理：结构化节点编辑器 */
 interface NodeDraft {
   name: string
@@ -122,6 +148,7 @@ interface NodeDraft {
   condition: string
   targetUserId?: number
   targetRoleId?: number
+  timeoutHours?: number
 }
 const APPROVER_TYPES = [
   { value: 'LEADER', label: '直属上级' },
@@ -172,6 +199,7 @@ function openFlowEdit(f: ApprovalFlowVO) {
       condition: (n.condition as string) ?? '',
       targetUserId: n.targetUserId as number | undefined,
       targetRoleId: n.targetRoleId as number | undefined,
+      timeoutHours: n.timeoutHours as number | undefined,
     }))
   } catch {
     flowNodes.value = [blankNode()]
@@ -201,6 +229,7 @@ async function submitFlow() {
       condition: n.condition || null,
       targetUserId: n.approverType === 'SPECIFIC_USER' ? n.targetUserId : undefined,
       targetRoleId: n.approverType === 'ROLE' ? n.targetRoleId : undefined,
+      timeoutHours: n.timeoutHours || undefined,
     })),
   })
   await approvalApi.saveFlow({ ...flowForm, configJson })
@@ -223,6 +252,7 @@ onMounted(() => loadTab('todo'))
   <div class="page">
     <div class="toolbar">
       <el-button v-if="canApply" type="primary" @click="openApply">发起审批</el-button>
+      <el-button v-if="canDelegate" @click="openDelegate">代理设置</el-button>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="(t) => loadTab(t as string)">
@@ -232,6 +262,12 @@ onMounted(() => loadTab('todo'))
           <el-table-column prop="formType" label="表单类型" width="120" />
           <el-table-column prop="applicantName" label="申请人" width="120" />
           <el-table-column prop="createdAt" label="申请时间" width="180" />
+          <el-table-column label="时限" width="100">
+            <template #default="{ row }">
+              <el-tag v-if="isOverdue((row as ApprovalInstanceVO).myDueAt)" type="danger" size="small">已超时</el-tag>
+              <span v-else-if="(row as ApprovalInstanceVO).myDueAt" style="color: #909399; font-size: 12px">正常</span>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="100">
             <template #default="{ row }">
               <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">审批</el-button>
@@ -367,6 +403,34 @@ onMounted(() => loadTab('todo'))
       </template>
     </el-dialog>
 
+    <!-- 代理设置 -->
+    <el-dialog v-model="delegateDialog" title="审批代理设置" width="440px">
+      <el-form label-width="90px">
+        <el-form-item label="代理人">
+          <el-select v-model="delegateForm.delegateId" placeholder="选择代理人" filterable style="width: 100%">
+            <el-option
+              v-for="u in userOptions.filter((o) => o.id !== auth.userInfo?.userId)"
+              :key="u.id" :label="u.name" :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开始时间">
+          <el-date-picker v-model="delegateForm.startAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="结束时间">
+          <el-date-picker v-model="delegateForm.endAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="启用">
+          <el-switch v-model="delegateForm.status" :active-value="1" :inactive-value="0" />
+        </el-form-item>
+      </el-form>
+      <p style="color: #909399; font-size: 12px; margin: 0 0 8px">生效期内,分派给你的审批将自动转由代理人处理</p>
+      <template #footer>
+        <el-button @click="delegateDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitDelegate">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 转交 -->
     <el-dialog v-model="transferDialog" title="转交审批" width="400px">
       <el-select v-model="transferTarget" placeholder="选择转交对象" filterable style="width: 100%">
@@ -430,6 +494,8 @@ onMounted(() => loadTab('todo'))
           </div>
           <div class="node-row">
             <el-input v-model="n.condition" placeholder="生效条件(可空),如 form.days >= 3" style="width: 320px" />
+            <el-input-number v-model="n.timeoutHours" :min="1" :max="720" placeholder="超时(小时)" style="width: 140px" />
+            <span style="color: #909399; font-size: 12px; line-height: 32px">超时小时数,空=不限时</span>
           </div>
         </div>
         <el-button style="margin-top: 8px" @click="flowNodes.push(blankNode())">+ 添加节点</el-button>

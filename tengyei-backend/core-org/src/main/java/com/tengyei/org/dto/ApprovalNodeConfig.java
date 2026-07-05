@@ -14,6 +14,7 @@ public class ApprovalNodeConfig {
     private String condition;
     private Long targetUserId;
     private Long targetRoleId;
+    private Integer timeoutHours;
 
     @Data
     public static class Wrapper {

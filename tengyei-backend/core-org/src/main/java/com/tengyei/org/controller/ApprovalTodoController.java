@@ -1,12 +1,18 @@
 package com.tengyei.org.controller;
 
+import com.tengyei.common.annotation.Auditable;
 import com.tengyei.common.context.TenantContext;
 import com.tengyei.common.response.Result;
+import com.tengyei.org.dto.ApprovalDelegateDTO;
 import com.tengyei.org.dto.ApprovalInstanceVO;
+import com.tengyei.org.entity.WfDelegate;
 import com.tengyei.org.service.ApprovalEngineService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -41,5 +47,20 @@ public class ApprovalTodoController {
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<List<ApprovalInstanceVO>> done() {
         return Result.ok(engineService.myDone(TenantContext.getUserId()));
+    }
+
+    @GetMapping("/delegate")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:delegate','PERM_platform:approval:delegate')")
+    public Result<WfDelegate> delegateGet() {
+        return Result.ok(engineService.delegateGet(TenantContext.getUserId()));
+    }
+
+    @PutMapping("/delegate")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:delegate','PERM_platform:approval:delegate')")
+    @Auditable(module = "审批", actionType = "UPDATE", description = "设置审批代理")
+    public Result<Void> delegateSave(@Valid @RequestBody ApprovalDelegateDTO dto) {
+        engineService.delegateSave(TenantContext.getUserId(), TenantContext.getUserName(),
+            dto.getDelegateId(), dto.getStartAt(), dto.getEndAt(), dto.getStatus());
+        return Result.ok();
     }
 }

@@ -8,6 +8,7 @@ export interface ApprovalNodeVO {
   result?: string
   comment?: string
   actionAt?: string
+  dueAt?: string
 }
 
 export interface ApprovalInstanceVO {
@@ -22,6 +23,7 @@ export interface ApprovalInstanceVO {
   currentNode?: string
   priority: number
   createdAt: string
+  myDueAt?: string
   nodes: ApprovalNodeVO[]
 }
 
@@ -45,6 +47,15 @@ export interface ApprovalFlowSaveDTO {
   formName: string
   processKey: string
   configJson: string
+}
+
+export interface ApprovalDelegateVO {
+  id?: number
+  delegateId: number
+  delegateName?: string
+  startAt: string
+  endAt: string
+  status: number
 }
 
 export interface ApprovalStatisticsVO {

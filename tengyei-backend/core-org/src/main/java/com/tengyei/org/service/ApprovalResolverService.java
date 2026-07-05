@@ -29,7 +29,7 @@ public class ApprovalResolverService {
                 "WHERE ur.role_id = ? AND u.is_deleted = 0 AND u.status = 1 ORDER BY u.id",
                 (rs, i) -> new Approver(rs.getLong("id"), rs.getString("real_name")), targetRoleId);
             if (members.isEmpty()) throw new BusinessException(422, "角色下无可用审批人");
-            return members;
+            return members.stream().map(this::redirectByDelegate).toList();
         }
 
         Long approverId = switch (approverType) {
@@ -46,7 +46,20 @@ public class ApprovalResolverService {
         List<String> names = jdbcTemplate.queryForList(
             "SELECT real_name FROM `user` WHERE id = ? AND is_deleted = 0", String.class, approverId);
         if (names.isEmpty()) throw new BusinessException(422, "审批人不存在或已离职");
-        return List.of(new Approver(approverId, names.get(0)));
+        return List.of(redirectByDelegate(new Approver(approverId, names.get(0))));
+    }
+
+    /** 委托生效期内重定向到代理人(单跳,不递归,避免代理链) */
+    private Approver redirectByDelegate(Approver original) {
+        List<Approver> rows = jdbcTemplate.query(
+            "SELECT delegate_id, delegate_name FROM wf_delegate " +
+            "WHERE tenant_id = ? AND owner_id = ? AND status = 1 AND is_deleted = 0 " +
+            "AND start_at <= NOW() AND end_at >= NOW() LIMIT 1",
+            (rs, i) -> new Approver(rs.getLong("delegate_id"), rs.getString("delegate_name")),
+            com.tengyei.common.context.TenantContext.getTenantId(), original.id());
+        if (rows.isEmpty()) return original;
+        Approver d = rows.get(0);
+        return new Approver(d.id(), d.name() + "(代理:" + original.name() + ")");
     }
 
     private Long queryLong(String sql, Object... args) {

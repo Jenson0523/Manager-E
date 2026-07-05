@@ -37,6 +37,78 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 代理：A 设置 B 为代理后,指向 A 的审批自动落到 B;超时:节点激活时按 timeoutHours 算 dueAt */
+    @Test
+    void delegateRedirectAndTimeoutDueAt() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String tokenA = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        String userB = "deleg_" + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, " +
+            "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
+            "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())",
+            seeded.tenantId(), "U-DELEG", userB, OrgTestSupport.ADMIN_PWD_HASH, "代理人B", "13955556666");
+        Long uidB = jdbcTemplate.queryForObject("SELECT id FROM user WHERE username = ?", Long.class, userB);
+        jdbcTemplate.update("INSERT INTO user_role (user_id, role_id, created_at) VALUES (?,?,NOW())",
+            uidB, seeded.roleId());
+        String tokenB = OrgTestSupport.login(mockMvc, objectMapper, userB);
+
+        // A 设置代理规则: 现在起 1 天内由 B 代理
+        mockMvc.perform(put("/api/v1/approval/delegate")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"delegateId\":" + uidB + ",\"startAt\":\"" +
+                    java.time.LocalDateTime.now().minusMinutes(1) + "\",\"endAt\":\"" +
+                    java.time.LocalDateTime.now().plusDays(1) + "\",\"status\":1}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/approval/delegate")
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.data.delegateId").value(uidB));
+
+        // 流程: SPECIFIC_USER 指向 A + 超时 24 小时
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() +
+            ",\"timeoutHours\":24}]}").replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"deleg\",\"formName\":\"代理单\",\"processKey\":\"DELEG\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"deleg\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long id = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // 节点应落在 B(代理), 名称含"代理", dueAt 已按超时算出
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.data.nodes[0].approverId").value(uidB))
+                .andExpect(jsonPath("$.data.nodes[0].approverName").value(org.hamcrest.Matchers.containsString("代理")))
+                .andExpect(jsonPath("$.data.nodes[0].dueAt").exists());
+        // B 的待办里能看到且带 myDueAt(超时提醒数据源)
+        mockMvc.perform(get("/api/v1/approval/todo")
+                .header("Authorization", "Bearer " + tokenB))
+                .andExpect(jsonPath("$.data[0].id").value(id))
+                .andExpect(jsonPath("$.data[0].myDueAt").exists());
+        // A 无权处理(已代理), B 通过 -> APPROVED
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/act")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"APPROVE\"}"))
+                .andExpect(jsonPath("$.code").value(403));
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/act")
+                .header("Authorization", "Bearer " + tokenB)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"APPROVE\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.data.status").value("APPROVED"));
+    }
+
     /** 转交：A 把待办转给 B,B 审批通过;统计接口返回聚合数据 */
     @Test
     void transferThenStatistics() throws Exception {

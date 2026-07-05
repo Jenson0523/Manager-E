@@ -6,6 +6,7 @@ import type {
   ApprovalFlowVO,
   ApprovalFlowSaveDTO,
   ApprovalStatisticsVO,
+  ApprovalDelegateVO,
 } from '@/types/approval'
 
 export const approvalApi = {
@@ -20,6 +21,9 @@ export const approvalApi = {
   transfer: (id: number, targetUserId: number) =>
     request.put<never, void>(`/v1/approval/instances/${id}/transfer`, { targetUserId }),
   statistics: () => request.get<never, ApprovalStatisticsVO>('/v1/approval/statistics'),
+  delegateGet: () => request.get<never, ApprovalDelegateVO | null>('/v1/approval/delegate'),
+  delegateSave: (data: ApprovalDelegateVO) =>
+    request.put<never, void>('/v1/approval/delegate', data),
 
   flows: () => request.get<never, ApprovalFlowVO[]>('/v1/approval/flows'),
   saveFlow: (data: ApprovalFlowSaveDTO) =>

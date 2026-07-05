@@ -20,6 +20,8 @@ public class ApprovalInstanceVO {
     private String currentNode;
     private Integer priority;
     private LocalDateTime createdAt;
+    /** 待办列表用:我的待办节点截止时间(超时提醒) */
+    private LocalDateTime myDueAt;
     private List<NodeVO> nodes;
 
     @Data
@@ -34,5 +36,6 @@ public class ApprovalInstanceVO {
         private String result;
         private String comment;
         private LocalDateTime actionAt;
+        private LocalDateTime dueAt;
     }
 }

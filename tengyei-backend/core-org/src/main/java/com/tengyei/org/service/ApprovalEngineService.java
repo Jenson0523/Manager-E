@@ -8,10 +8,12 @@ import com.tengyei.org.dto.ApprovalApplyDTO;
 import com.tengyei.org.dto.ApprovalInstanceVO;
 import com.tengyei.org.dto.ApprovalNodeConfig;
 import com.tengyei.org.entity.WfDefinition;
+import com.tengyei.org.entity.WfDelegate;
 import com.tengyei.org.entity.WfInstance;
 import com.tengyei.org.entity.WfNode;
 import com.tengyei.org.entity.WfRecord;
 import com.tengyei.org.mapper.WfDefinitionMapper;
+import com.tengyei.org.mapper.WfDelegateMapper;
 import com.tengyei.org.mapper.WfInstanceMapper;
 import com.tengyei.org.mapper.WfNodeMapper;
 import com.tengyei.org.mapper.WfRecordMapper;
@@ -41,6 +43,7 @@ public class ApprovalEngineService {
     private final WfInstanceMapper instanceMapper;
     private final WfNodeMapper nodeMapper;
     private final WfRecordMapper recordMapper;
+    private final WfDelegateMapper delegateMapper;
     private final ApprovalResolverService resolverService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -86,6 +89,7 @@ public class ApprovalEngineService {
             node.setApproverType(cfg.getApproverType());
             node.setTargetUserId(cfg.getTargetUserId());
             node.setTargetRoleId(cfg.getTargetRoleId());
+            node.setTimeoutHours(cfg.getTimeoutHours());
             node.setResolveMode(cfg.getResolveMode());
             node.setNodeOrder(order++);
             node.setStatus("WAITING");
@@ -182,6 +186,9 @@ public class ApprovalEngineService {
             next.setApproverId(approvers.get(0).id());
             next.setApproverName(approvers.get(0).name());
             next.setStatus("APPROVING");
+            if (next.getTimeoutHours() != null) {
+                next.setDueAt(LocalDateTime.now().plusHours(next.getTimeoutHours()));
+            }
             nodeMapper.updateById(next);
             if (multi) {
                 // 会签/或签：每位审批人一行,同 node_key 分组
@@ -199,6 +206,8 @@ public class ApprovalEngineService {
                     sibling.setApproverId(approvers.get(i).id());
                     sibling.setApproverName(approvers.get(i).name());
                     sibling.setStatus("APPROVING");
+                    sibling.setTimeoutHours(next.getTimeoutHours());
+                    sibling.setDueAt(next.getDueAt());
                     nodeMapper.insert(sibling);
                 }
             }
@@ -222,10 +231,22 @@ public class ApprovalEngineService {
 
     public List<ApprovalInstanceVO> myTodo(Long userId) {
         Long tenantId = TenantContext.getTenantId();
-        List<Long> instanceIds = jdbcTemplate.queryForList(
-            "SELECT instance_id FROM wf_node WHERE tenant_id = ? AND approver_id = ? AND status = 'APPROVING'",
-            Long.class, tenantId, userId);
-        return listByIds(instanceIds);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT instance_id, due_at FROM wf_node WHERE tenant_id = ? AND approver_id = ? AND status = 'APPROVING'",
+            tenantId, userId);
+        if (rows.isEmpty()) return List.of();
+        Map<Long, LocalDateTime> dueMap = new java.util.HashMap<>();
+        List<Long> instanceIds = new java.util.ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Long iid = ((Number) r.get("instance_id")).longValue();
+            instanceIds.add(iid);
+            Object due = r.get("due_at");
+            if (due instanceof java.sql.Timestamp ts) dueMap.put(iid, ts.toLocalDateTime());
+            else if (due instanceof LocalDateTime ldt) dueMap.put(iid, ldt);
+        }
+        List<ApprovalInstanceVO> vos = listByIds(instanceIds);
+        vos.forEach(v -> v.setMyDueAt(dueMap.get(v.getId())));
+        return vos;
     }
 
     public List<ApprovalInstanceVO> myApplied(Long userId) {
@@ -297,6 +318,41 @@ public class ApprovalEngineService {
         recordMapper.insert(record);
     }
 
+    /** 我的代理规则(一人一条),无则 null */
+    public WfDelegate delegateGet(Long userId) {
+        return delegateMapper.selectOne(new LambdaQueryWrapper<WfDelegate>()
+            .eq(WfDelegate::getTenantId, TenantContext.getTenantId())
+            .eq(WfDelegate::getOwnerId, userId));
+    }
+
+    /** 设置/更新代理规则(upsert) */
+    @Transactional
+    public void delegateSave(Long ownerId, String ownerName, Long delegateId,
+                             LocalDateTime startAt, LocalDateTime endAt, Integer status) {
+        Long tenantId = TenantContext.getTenantId();
+        if (delegateId.equals(ownerId)) throw new BusinessException(422, "不能委托给自己");
+        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+            throw new BusinessException(422, "代理起止时间无效");
+        }
+        List<String> names = jdbcTemplate.queryForList(
+            "SELECT real_name FROM `user` WHERE id = ? AND tenant_id = ? AND is_deleted = 0 AND status = 1",
+            String.class, delegateId, tenantId);
+        if (names.isEmpty()) throw new BusinessException(422, "代理人不存在或已停用");
+
+        WfDelegate existing = delegateGet(ownerId);
+        WfDelegate d = existing != null ? existing : new WfDelegate();
+        d.setTenantId(tenantId);
+        d.setOwnerId(ownerId);
+        d.setOwnerName(ownerName);
+        d.setDelegateId(delegateId);
+        d.setDelegateName(names.get(0));
+        d.setStartAt(startAt);
+        d.setEndAt(endAt);
+        d.setStatus(status != null ? status : 1);
+        if (existing != null) delegateMapper.updateById(d);
+        else delegateMapper.insert(d);
+    }
+
     /** 统计：租户维度汇总(状态分布/驳回率/平均时长/表单分布)。ponytail: 内存聚合,量大再下推 SQL */
     public Map<String, Object> statistics() {
         List<WfInstance> all = instanceMapper.selectList(new LambdaQueryWrapper<WfInstance>()
@@ -336,7 +392,7 @@ public class ApprovalEngineService {
                 .id(n.getId()).nodeKey(n.getNodeKey()).nodeName(n.getNodeName())
                 .approverId(n.getApproverId()).approverName(n.getApproverName())
                 .status(n.getStatus()).result(n.getResult())
-                .comment(n.getComment()).actionAt(n.getActionAt()).build())
+                .comment(n.getComment()).actionAt(n.getActionAt()).dueAt(n.getDueAt()).build())
                 .toList())
             .build();
     }

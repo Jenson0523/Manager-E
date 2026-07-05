@@ -28,6 +28,7 @@ public class WfNode extends BaseEntity {
     private Long actionBy;
     private LocalDateTime actionAt;
     private LocalDateTime dueAt;
+    private Integer timeoutHours;
     // ponytail: 并发审批的乐观锁保护暂缓，version 列保留待需要时再接 @Version
     private Integer version;
 }
