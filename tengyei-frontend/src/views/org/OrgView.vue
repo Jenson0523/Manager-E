@@ -526,6 +526,11 @@ onMounted(() => {
   gap: 16px;
   align-items: start;
 }
+@media (max-width: 768px) {
+  .org {
+    grid-template-columns: 1fr;
+  }
+}
 .dept-pane,
 .branch-pane {
   border-radius: 10px;

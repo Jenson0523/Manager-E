@@ -294,3 +294,19 @@ code {
     border-right-color: var(--border);
   }
 }
+
+/* ===== 响应式适配 ===== */
+/* 弹窗不超屏宽(覆盖各页固定 width) */
+.el-dialog {
+  max-width: 94vw;
+}
+/* 各页 .toolbar 在窄屏自动换行 */
+.toolbar {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+@media (max-width: 768px) {
+  .layout-content {
+    padding: 8px !important;
+  }
+}

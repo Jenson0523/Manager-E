@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTabStore } from '@/stores/tab'
+import { useIsMobile } from '@/utils/responsive'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 import AppTabBar from './AppTabBar.vue'
@@ -10,9 +11,14 @@ const route = useRoute()
 const router = useRouter()
 const tabStore = useTabStore()
 
+/* 移动端:侧边栏收进抽屉,导航后自动关闭 */
+const isMobile = useIsMobile()
+const drawerOpen = ref(false)
+
 watch(
   () => route.path,
   (path) => {
+    drawerOpen.value = false
     if (path === '/login' || path === '/403') return
     const title = (route.meta.title as string) || '页面'
     const closable = path !== '/dashboard'
@@ -44,9 +50,19 @@ function onCloseAll() {
 
 <template>
   <div class="main-layout">
-    <AppSidebar class="layout-sidebar" />
+    <AppSidebar v-if="!isMobile" class="layout-sidebar" />
+    <el-drawer
+      v-else
+      v-model="drawerOpen"
+      direction="ltr"
+      :with-header="false"
+      size="220px"
+      class="sidebar-drawer"
+    >
+      <AppSidebar />
+    </el-drawer>
     <div class="layout-body">
-      <AppHeader />
+      <AppHeader :show-menu-button="isMobile" @toggle-menu="drawerOpen = !drawerOpen" />
       <AppTabBar
         @select="onSelect"
         @close="onClose"
@@ -85,5 +101,11 @@ function onCloseAll() {
   flex: 1;
   overflow: auto;
   padding: 16px;
+}
+</style>
+
+<style>
+.sidebar-drawer .el-drawer__body {
+  padding: 0;
 }
 </style>

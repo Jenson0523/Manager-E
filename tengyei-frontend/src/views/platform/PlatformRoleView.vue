@@ -290,6 +290,11 @@ onMounted(() => {
   gap: 16px;
   align-items: start;
 }
+@media (max-width: 768px) {
+  .platform-role-view {
+    grid-template-columns: 1fr;
+  }
+}
 .role-pane,
 .perm-pane {
   border-radius: 8px;

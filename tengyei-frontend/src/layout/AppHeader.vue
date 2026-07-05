@@ -2,10 +2,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Bell } from '@element-plus/icons-vue'
+import { Bell, Menu } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useTabStore } from '@/stores/tab'
 import { noticeApi, type NoticeVO } from '@/api/notice'
+
+defineProps<{ showMenuButton?: boolean }>()
+defineEmits<{ (e: 'toggle-menu'): void }>()
 
 const auth = useAuthStore()
 const tabStore = useTabStore()
@@ -77,10 +80,15 @@ async function handleLogout() {
 
 <template>
   <header class="app-header">
-    <el-breadcrumb separator="/">
-      <el-breadcrumb-item>首页</el-breadcrumb-item>
-      <el-breadcrumb-item>{{ currentTitle }}</el-breadcrumb-item>
-    </el-breadcrumb>
+    <div class="header-left">
+      <el-icon v-if="showMenuButton" :size="22" class="menu-btn" @click="$emit('toggle-menu')">
+        <Menu />
+      </el-icon>
+      <el-breadcrumb separator="/">
+        <el-breadcrumb-item>首页</el-breadcrumb-item>
+        <el-breadcrumb-item>{{ currentTitle }}</el-breadcrumb-item>
+      </el-breadcrumb>
+    </div>
     <div class="header-right">
       <el-popover placement="bottom-end" width="360" trigger="click" @show="loadNotices">
         <template #reference>
@@ -131,6 +139,15 @@ async function handleLogout() {
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.menu-btn {
+  cursor: pointer;
+  color: #374151;
 }
 .header-right {
   display: flex;

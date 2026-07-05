@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, nextTick } from 'vue'
+import { onMounted, onUnmounted, ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { dashboardApi } from '@/api/dashboard'
 import type { DashboardStats, ChartData } from '@/types/dashboard'
@@ -70,6 +70,14 @@ function renderComp() {
     series: [{ name: '用户数', type: 'bar', data: vals }],
   })
 }
+
+function resizeCharts() {
+  trendChart?.resize()
+  pieChart?.resize()
+  compChart?.resize()
+}
+window.addEventListener('resize', resizeCharts)
+onUnmounted(() => window.removeEventListener('resize', resizeCharts))
 
 onMounted(async () => {
   try {
@@ -143,6 +151,14 @@ const statusType = (s: number): 'success' | 'info' | 'warning' => (s === 1 ? 'su
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 16px;
+}
+@media (max-width: 768px) {
+  .stat-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+  .charts-row {
+    grid-template-columns: 1fr;
+  }
 }
 .stat-card {
   border-radius: 10px;

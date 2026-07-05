@@ -6,9 +6,11 @@ import { roleApi } from '@/api/rbac'
 import { userApi } from '@/api/user'
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
+import { useIsMobile } from '@/utils/responsive'
 import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO, FormField } from '@/types/approval'
 
 const auth = useAuthStore()
+const isMobile = useIsMobile()
 // 平台层(tenant 0)与公司层权限码并行,任一命中即可
 const canManage = computed(
   () => auth.hasPermission('PERM_approval:manage') || auth.hasPermission('PERM_platform:approval:manage')
@@ -331,7 +333,18 @@ onMounted(() => loadTab('todo'))
 
     <el-tabs v-model="activeTab" @tab-change="(t) => loadTab(t as string)">
       <el-tab-pane label="我的待办" name="todo">
-        <el-table v-loading="loading" :data="todoList" stripe>
+        <div v-if="isMobile" v-loading="loading" class="m-list">
+          <div v-for="row in todoList" :key="row.id" class="m-card" @click="openDetail(row.id)">
+            <div class="m-card-head">
+              <span class="m-card-title">{{ row.formType }}</span>
+              <el-tag v-if="isOverdue(row.myDueAt)" type="danger" size="small">已超时</el-tag>
+            </div>
+            <div class="m-card-line">{{ row.instanceNo }}</div>
+            <div class="m-card-line">申请人:{{ row.applicantName }} · {{ row.createdAt }}</div>
+          </div>
+          <el-empty v-if="!todoList.length" description="暂无待办" :image-size="60" />
+        </div>
+        <el-table v-else v-loading="loading" :data="todoList" stripe>
           <el-table-column prop="instanceNo" label="单号" width="180" />
           <el-table-column prop="formType" label="表单类型" width="120" />
           <el-table-column prop="applicantName" label="申请人" width="120" />
@@ -351,7 +364,18 @@ onMounted(() => loadTab('todo'))
       </el-tab-pane>
 
       <el-tab-pane label="我已发起" name="my">
-        <el-table v-loading="loading" :data="myList" stripe>
+        <div v-if="isMobile" v-loading="loading" class="m-list">
+          <div v-for="row in myList" :key="row.id" class="m-card" @click="openDetail(row.id)">
+            <div class="m-card-head">
+              <span class="m-card-title">{{ row.formType }}</span>
+              <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+            </div>
+            <div class="m-card-line">{{ row.instanceNo }}</div>
+            <div class="m-card-line">{{ row.createdAt }}</div>
+          </div>
+          <el-empty v-if="!myList.length" description="暂无记录" :image-size="60" />
+        </div>
+        <el-table v-else v-loading="loading" :data="myList" stripe>
           <el-table-column prop="instanceNo" label="单号" width="180" />
           <el-table-column prop="formType" label="表单类型" width="120" />
           <el-table-column label="状态" width="100">
@@ -372,7 +396,18 @@ onMounted(() => loadTab('todo'))
       </el-tab-pane>
 
       <el-tab-pane label="我已审批" name="done">
-        <el-table v-loading="loading" :data="doneList" stripe>
+        <div v-if="isMobile" v-loading="loading" class="m-list">
+          <div v-for="row in doneList" :key="row.id" class="m-card" @click="openDetail(row.id)">
+            <div class="m-card-head">
+              <span class="m-card-title">{{ row.formType }}</span>
+              <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+            </div>
+            <div class="m-card-line">{{ row.instanceNo }}</div>
+            <div class="m-card-line">申请人:{{ row.applicantName }}</div>
+          </div>
+          <el-empty v-if="!doneList.length" description="暂无记录" :image-size="60" />
+        </div>
+        <el-table v-else v-loading="loading" :data="doneList" stripe>
           <el-table-column prop="instanceNo" label="单号" width="180" />
           <el-table-column prop="formType" label="表单类型" width="120" />
           <el-table-column prop="applicantName" label="申请人" width="120" />
@@ -434,7 +469,7 @@ onMounted(() => loadTab('todo'))
     </el-tabs>
 
     <!-- 发起审批 -->
-    <el-dialog v-model="applyDialog" title="发起审批" width="520px">
+    <el-dialog v-model="applyDialog" title="发起审批" width="520px" :fullscreen="isMobile">
       <el-form label-width="100px">
         <el-form-item label="审批类型">
           <el-select v-model="applyFormType" style="width: 100%" @change="onApplyTypeChange">
@@ -463,7 +498,7 @@ onMounted(() => loadTab('todo'))
     </el-dialog>
 
     <!-- 审批详情/处理 -->
-    <el-dialog v-model="detailDialog" :title="`审批详情 ${detail?.instanceNo ?? ''}`" width="560px">
+    <el-dialog v-model="detailDialog" :title="`审批详情 ${detail?.instanceNo ?? ''}`" width="560px" :fullscreen="isMobile">
       <template v-if="detail">
         <p>申请人：{{ detail.applicantName }}　申请时间：{{ detail.createdAt }}</p>
         <p style="font-weight: 600; margin-top: 12px">表单数据</p>
@@ -533,7 +568,7 @@ onMounted(() => loadTab('todo'))
     </el-dialog>
 
     <!-- 流程配置：可视化节点编辑 -->
-    <el-dialog v-model="flowDialog" title="审批流程配置" width="720px">
+    <el-dialog v-model="flowDialog" title="审批流程配置" width="720px" :fullscreen="isMobile">
       <el-form label-width="90px">
         <el-form-item label="表单类型">
           <el-input v-model="flowForm.formType" placeholder="如 leave" />
@@ -637,10 +672,41 @@ onMounted(() => loadTab('todo'))
   font-size: 13px;
   line-height: 1.8;
 }
+.m-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.m-card {
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.m-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.m-card-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.m-card-line {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+}
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 .stat-card {
   border: 1px solid #ebeef5;
