@@ -13,4 +13,5 @@ public class ApprovalFlowSaveDTO {
     private String processKey;
     @NotBlank(message = "审批节点配置不能为空")
     private String configJson;
+    private String fieldsJson;
 }

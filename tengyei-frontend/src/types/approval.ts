@@ -32,12 +32,21 @@ export interface ApprovalApplyDTO {
   formData: Record<string, unknown>
 }
 
+export interface FormField {
+  key: string
+  label: string
+  type: 'text' | 'number' | 'date' | 'textarea' | 'select'
+  required?: boolean
+  options?: string[]
+}
+
 export interface ApprovalFlowVO {
   id: number
   formType: string
   formName: string
   processKey: string
   configJson: string
+  fieldsJson?: string
   version: number
   status: number
 }
@@ -47,6 +56,7 @@ export interface ApprovalFlowSaveDTO {
   formName: string
   processKey: string
   configJson: string
+  fieldsJson?: string
 }
 
 export interface ApprovalDelegateVO {

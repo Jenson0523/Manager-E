@@ -37,6 +37,29 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 表单字段定义随流程保存,发起人通过 /forms 取回用于动态渲染 */
+    @Test
+    void formFieldsRoundTrip() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String token = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() + "}]}")
+            .replace("\"", "\\\"");
+        String fields = ("[{\"key\":\"days\",\"label\":\"请假天数\",\"type\":\"number\",\"required\":true}]")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"leave2\",\"formName\":\"请假\",\"processKey\":\"LEAVE2\"," +
+                    "\"configJson\":\"" + cfg + "\",\"fieldsJson\":\"" + fields + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/approval/forms")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].formType").value("leave2"))
+                .andExpect(jsonPath("$.data[0].fieldsJson").value(org.hamcrest.Matchers.containsString("days")));
+    }
+
     /** 代理：A 设置 B 为代理后,指向 A 的审批自动落到 B;超时:节点激活时按 timeoutHours 算 dueAt */
     @Test
     void delegateRedirectAndTimeoutDueAt() throws Exception {

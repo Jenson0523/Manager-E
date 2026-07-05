@@ -6,7 +6,7 @@ import { roleApi } from '@/api/rbac'
 import { userApi } from '@/api/user'
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
-import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO } from '@/types/approval'
+import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO, FormField } from '@/types/approval'
 
 const auth = useAuthStore()
 // 平台层(tenant 0)与公司层权限码并行,任一命中即可
@@ -54,23 +54,58 @@ function statusLabel(status: string) {
   return { PENDING: '审批中', APPROVED: '已通过', REJECTED: '已驳回', CANCELED: '已撤销' }[status] ?? status
 }
 
-/* 发起审批 */
+/* 发起审批：按流程定义的字段动态渲染,无字段定义时降级 JSON 输入 */
 const applyDialog = ref(false)
-const applyForm = reactive({ formType: 'leave', formDataJson: '{\n  "days": 2,\n  "reason": "回家探亲"\n}' })
-function openApply() {
-  applyForm.formType = 'leave'
-  applyForm.formDataJson = '{\n  "days": 2,\n  "reason": "回家探亲"\n}'
+const applyForms = ref<ApprovalFlowVO[]>([])
+const applyFormType = ref('')
+const applyFields = ref<FormField[]>([])
+const applyValues = reactive<Record<string, unknown>>({})
+const applyJsonFallback = ref('{}')
+
+function parseFields(json?: string): FormField[] {
+  try {
+    const arr = json ? JSON.parse(json) : []
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+function onApplyTypeChange() {
+  const f = applyForms.value.find((x) => x.formType === applyFormType.value)
+  applyFields.value = parseFields(f?.fieldsJson)
+  Object.keys(applyValues).forEach((k) => delete applyValues[k])
+  applyJsonFallback.value = '{}'
+}
+async function openApply() {
+  applyForms.value = await approvalApi.forms()
+  if (!applyForms.value.length) {
+    ElMessage.warning('暂无可用审批流程,请联系管理员配置')
+    return
+  }
+  applyFormType.value = applyForms.value[0].formType
+  onApplyTypeChange()
   applyDialog.value = true
 }
 async function submitApply() {
   let formData: Record<string, unknown>
-  try {
-    formData = JSON.parse(applyForm.formDataJson)
-  } catch {
-    ElMessage.error('表单数据不是合法 JSON')
-    return
+  if (applyFields.value.length) {
+    for (const f of applyFields.value) {
+      const v = applyValues[f.key]
+      if (f.required && (v === undefined || v === null || v === '')) {
+        ElMessage.error(`请填写「${f.label}」`)
+        return
+      }
+    }
+    formData = { ...applyValues }
+  } else {
+    try {
+      formData = JSON.parse(applyJsonFallback.value)
+    } catch {
+      ElMessage.error('表单数据不是合法 JSON')
+      return
+    }
   }
-  await approvalApi.apply({ formType: applyForm.formType, formData })
+  await approvalApi.apply({ formType: applyFormType.value, formData })
   ElMessage.success('已提交审批')
   applyDialog.value = false
   loadTab('my')
@@ -157,9 +192,24 @@ const APPROVER_TYPES = [
   { value: 'ROLE', label: '指定角色' },
   { value: 'SELF_APPROVE', label: '自动通过(备案)' },
 ]
+interface FieldDraft {
+  key: string
+  label: string
+  type: string
+  required: boolean
+  optionsText: string
+}
+const FIELD_TYPES = [
+  { value: 'text', label: '单行文本' },
+  { value: 'textarea', label: '多行文本' },
+  { value: 'number', label: '数字' },
+  { value: 'date', label: '日期' },
+  { value: 'select', label: '下拉选择' },
+]
 const flowDialog = ref(false)
 const flowForm = reactive({ formType: '', formName: '', processKey: '' })
 const flowNodes = ref<NodeDraft[]>([])
+const flowFields = ref<FieldDraft[]>([])
 const userOptions = ref<{ id: number; name: string }[]>([])
 const roleOptions = ref<{ id: number; name: string }[]>([])
 
@@ -178,11 +228,15 @@ async function loadFlowRefs() {
     userOptions.value = page.records.map((u) => ({ id: u.id, name: u.realName }))
   }
 }
+function blankField(): FieldDraft {
+  return { key: '', label: '', type: 'text', required: false, optionsText: '' }
+}
 function openFlowCreate() {
   flowForm.formType = ''
   flowForm.formName = ''
   flowForm.processKey = ''
   flowNodes.value = [blankNode()]
+  flowFields.value = []
   loadFlowRefs()
   flowDialog.value = true
 }
@@ -204,6 +258,13 @@ function openFlowEdit(f: ApprovalFlowVO) {
   } catch {
     flowNodes.value = [blankNode()]
   }
+  flowFields.value = parseFields(f.fieldsJson).map((x) => ({
+    key: x.key,
+    label: x.label,
+    type: x.type,
+    required: !!x.required,
+    optionsText: (x.options ?? []).join(','),
+  }))
   loadFlowRefs()
   flowDialog.value = true
 }
@@ -219,6 +280,19 @@ async function submitFlow() {
     if (n.approverType === 'SPECIFIC_USER' && !n.targetUserId) { ElMessage.error(`第 ${i + 1} 个节点需选择指定人员`); return }
     if (n.approverType === 'ROLE' && !n.targetRoleId) { ElMessage.error(`第 ${i + 1} 个节点需选择角色`); return }
   }
+  for (const [i, f] of flowFields.value.entries()) {
+    if (!f.key || !f.label) { ElMessage.error(`第 ${i + 1} 个字段需填写标识和名称`); return }
+    if (f.type === 'select' && !f.optionsText.trim()) { ElMessage.error(`字段「${f.label}」需填写选项`); return }
+  }
+  const fieldsJson = flowFields.value.length
+    ? JSON.stringify(flowFields.value.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        required: f.required || undefined,
+        options: f.type === 'select' ? f.optionsText.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      })))
+    : undefined
   const configJson = JSON.stringify({
     nodes: flowNodes.value.map((n, i) => ({
       key: `node_${i + 1}`,
@@ -232,7 +306,7 @@ async function submitFlow() {
       timeoutHours: n.timeoutHours || undefined,
     })),
   })
-  await approvalApi.saveFlow({ ...flowForm, configJson })
+  await approvalApi.saveFlow({ ...flowForm, configJson, fieldsJson })
   ElMessage.success('已保存')
   flowDialog.value = false
   loadTab('flows')
@@ -360,13 +434,26 @@ onMounted(() => loadTab('todo'))
     </el-tabs>
 
     <!-- 发起审批 -->
-    <el-dialog v-model="applyDialog" title="发起审批" width="480px">
-      <el-form label-width="90px">
-        <el-form-item label="表单类型">
-          <el-input v-model="applyForm.formType" placeholder="如 leave / expense / purchase" />
+    <el-dialog v-model="applyDialog" title="发起审批" width="520px">
+      <el-form label-width="100px">
+        <el-form-item label="审批类型">
+          <el-select v-model="applyFormType" style="width: 100%" @change="onApplyTypeChange">
+            <el-option v-for="f in applyForms" :key="f.formType" :label="f.formName" :value="f.formType" />
+          </el-select>
         </el-form-item>
-        <el-form-item label="表单数据">
-          <el-input v-model="applyForm.formDataJson" type="textarea" :rows="6" />
+        <template v-if="applyFields.length">
+          <el-form-item v-for="f in applyFields" :key="f.key" :label="f.label" :required="f.required">
+            <el-input v-if="f.type === 'text'" v-model="applyValues[f.key] as string" />
+            <el-input v-else-if="f.type === 'textarea'" v-model="applyValues[f.key] as string" type="textarea" :rows="3" />
+            <el-input-number v-else-if="f.type === 'number'" v-model="applyValues[f.key] as number" style="width: 100%" />
+            <el-date-picker v-else-if="f.type === 'date'" v-model="applyValues[f.key] as string" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+            <el-select v-else-if="f.type === 'select'" v-model="applyValues[f.key] as string" style="width: 100%">
+              <el-option v-for="o in f.options ?? []" :key="o" :label="o" :value="o" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <el-form-item v-else label="表单数据">
+          <el-input v-model="applyJsonFallback" type="textarea" :rows="6" placeholder="该流程未定义表单字段,请填写 JSON" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -499,6 +586,21 @@ onMounted(() => loadTab('todo'))
           </div>
         </div>
         <el-button style="margin-top: 8px" @click="flowNodes.push(blankNode())">+ 添加节点</el-button>
+      </div>
+
+      <div class="node-editor" style="margin-top: 12px">
+        <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px">表单字段(发起时按此渲染,空=JSON 输入)</div>
+        <div v-for="(f, i) in flowFields" :key="i" class="node-row">
+          <el-input v-model="f.key" placeholder="字段标识,如 days" style="width: 110px" />
+          <el-input v-model="f.label" placeholder="显示名,如 请假天数" style="width: 130px" />
+          <el-select v-model="f.type" style="width: 110px">
+            <el-option v-for="t in FIELD_TYPES" :key="t.value" :label="t.label" :value="t.value" />
+          </el-select>
+          <el-checkbox v-model="f.required">必填</el-checkbox>
+          <el-input v-if="f.type === 'select'" v-model="f.optionsText" placeholder="选项,逗号分隔" style="width: 150px" />
+          <el-button link type="danger" @click="flowFields.splice(i, 1)">删除</el-button>
+        </div>
+        <el-button style="margin-top: 4px" @click="flowFields.push(blankField())">+ 添加字段</el-button>
       </div>
 
       <template #footer>

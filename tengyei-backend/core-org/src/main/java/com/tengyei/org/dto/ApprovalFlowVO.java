@@ -11,6 +11,7 @@ public class ApprovalFlowVO {
     private String formName;
     private String processKey;
     private String configJson;
+    private String fieldsJson;
     private Integer version;
     private Integer status;
 }

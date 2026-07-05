@@ -24,6 +24,14 @@ import java.util.List;
 public class ApprovalTodoController {
 
     private final ApprovalEngineService engineService;
+    private final com.tengyei.org.service.ApprovalFlowService flowService;
+
+    /** 发起人可选的启用表单(含字段定义) */
+    @GetMapping("/forms")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")
+    public Result<List<com.tengyei.org.dto.ApprovalFlowVO>> forms() {
+        return Result.ok(flowService.enabledForms());
+    }
 
     @GetMapping("/todo")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")

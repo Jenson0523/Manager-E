@@ -39,6 +39,7 @@ public class ApprovalFlowService {
             existing.setFormName(dto.getFormName());
             existing.setProcessKey(dto.getProcessKey());
             existing.setConfigJson(dto.getConfigJson());
+            existing.setFieldsJson(dto.getFieldsJson());
             existing.setVersion(existing.getVersion() + 1);
             definitionMapper.updateById(existing);
             return existing.getId();
@@ -49,6 +50,7 @@ public class ApprovalFlowService {
         d.setFormName(dto.getFormName());
         d.setProcessKey(dto.getProcessKey());
         d.setConfigJson(dto.getConfigJson());
+        d.setFieldsJson(dto.getFieldsJson());
         d.setVersion(1);
         d.setStatus(1);
         d.setIsDefault(1);
@@ -78,10 +80,20 @@ public class ApprovalFlowService {
         }
     }
 
+    /** 发起人可选的启用表单(含字段定义,供动态渲染) */
+    public List<ApprovalFlowVO> enabledForms() {
+        List<WfDefinition> defs = definitionMapper.selectList(new LambdaQueryWrapper<WfDefinition>()
+            .eq(WfDefinition::getTenantId, TenantContext.getTenantId())
+            .eq(WfDefinition::getStatus, 1)
+            .orderByAsc(WfDefinition::getId));
+        return defs.stream().map(this::toVO).toList();
+    }
+
     private ApprovalFlowVO toVO(WfDefinition d) {
         return ApprovalFlowVO.builder()
             .id(d.getId()).formType(d.getFormType()).formName(d.getFormName())
             .processKey(d.getProcessKey()).configJson(d.getConfigJson())
+            .fieldsJson(d.getFieldsJson())
             .version(d.getVersion()).status(d.getStatus()).build();
     }
 }

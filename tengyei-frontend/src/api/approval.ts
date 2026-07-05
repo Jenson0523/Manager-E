@@ -26,6 +26,7 @@ export const approvalApi = {
     request.put<never, void>('/v1/approval/delegate', data),
 
   flows: () => request.get<never, ApprovalFlowVO[]>('/v1/approval/flows'),
+  forms: () => request.get<never, ApprovalFlowVO[]>('/v1/approval/forms'),
   saveFlow: (data: ApprovalFlowSaveDTO) =>
     request.post<never, IdResult>('/v1/approval/flows', data),
   toggleFlowStatus: (id: number, status: number) =>
