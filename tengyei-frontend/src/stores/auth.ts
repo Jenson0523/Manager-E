@@ -1,11 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth'
+import { moduleApi } from '@/api/module'
+import type { ActiveModuleVO } from '@/api/module'
 import type { UserInfo, LoginRequest } from '@/types/auth'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('access_token'))
   const userInfo = ref<UserInfo | null>(null)
+  const modules = ref<ActiveModuleVO[]>([])
+  const modulesLoaded = ref(false)
 
   const isLoggedIn = computed(() => !!token.value)
   const isSuperAdmin = computed(() => userInfo.value?.isSuperAdmin ?? false)
@@ -20,6 +24,7 @@ export const useAuthStore = defineStore('auth', () => {
       return { pwdResetRequired: true }
     }
     await fetchUserInfo()
+    await fetchModules()
     return { pwdResetRequired: false }
   }
 
@@ -30,6 +35,16 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = null
       localStorage.removeItem('access_token')
       throw err
+    }
+  }
+
+  async function fetchModules() {
+    try {
+      modules.value = await moduleApi.active()
+    } catch {
+      modules.value = []
+    } finally {
+      modulesLoaded.value = true
     }
   }
 
@@ -54,6 +69,8 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     token,
     userInfo,
+    modules,
+    modulesLoaded,
     isLoggedIn,
     isSuperAdmin,
     permissions,
@@ -61,6 +78,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     fetchUserInfo,
+    fetchModules,
     hasPermission,
   }
 })

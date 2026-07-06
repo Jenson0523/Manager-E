@@ -51,6 +51,20 @@ public class ModuleRegistryController {
         return Result.ok(records);
     }
 
+    /**
+     * 已启用模块列表（公开给所有已登录用户）
+     * 用于前端动态渲染业务模块入口，平台方在模块管理中注册/启用后即生效
+     */
+    @GetMapping("/active")
+    public Result<List<Map<String, Object>>> activeModules() {
+        List<Map<String, Object>> records = jdbcTemplate.queryForList(
+            "SELECT id, module_code AS moduleCode, module_name AS moduleName, " +
+            "version, entry_url AS entryUrl, menu_config AS menuConfig, " +
+            "permissions, status FROM module_registry WHERE status = 1 ORDER BY id"
+        );
+        return Result.ok(records);
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_platform:module:create')")
     @Auditable(module = "模块管理", actionType = "CREATE", description = "注册新模块")

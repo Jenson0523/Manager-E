@@ -148,6 +148,21 @@ function go(path: string) {
         <el-icon v-if="iconMap[r.path]"><component :is="iconMap[r.path]" /></el-icon>
         <span>{{ titleMap[r.path] || r.name }}</span>
       </el-menu-item>
+
+      <!-- Dynamically registered business modules (from module_registry) -->
+      <el-sub-menu v-if="auth.modules.length" index="__modules">
+        <template #title>
+          <el-icon><Grid /></el-icon>
+          <span>业务应用</span>
+        </template>
+        <el-menu-item
+          v-for="m in auth.modules"
+          :key="m.moduleCode"
+          :index="m.entryUrl"
+        >
+          <span>{{ m.moduleName }}</span>
+        </el-menu-item>
+      </el-sub-menu>
     </el-menu>
     <div class="sidebar-footer">v2.0</div>
   </aside>

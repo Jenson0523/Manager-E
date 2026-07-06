@@ -22,9 +22,22 @@ export interface ModuleDTO {
   permissions: string
 }
 
+export interface ActiveModuleVO {
+  id: number
+  moduleCode: string
+  moduleName: string
+  version: string
+  entryUrl: string
+  menuConfig: string
+  permissions: string
+  status: number
+}
+
 export const moduleApi = {
   list: (params?: { keyword?: string; status?: number }) =>
     request.get<never, ModuleVO[]>('/v1/modules', { params }),
+  active: () =>
+    request.get<never, ActiveModuleVO[]>('/v1/modules/active'),
   create: (data: ModuleDTO) =>
     request.post<never, void>('/v1/modules', data),
   update: (id: number, data: ModuleDTO) =>

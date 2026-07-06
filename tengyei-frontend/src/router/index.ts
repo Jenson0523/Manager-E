@@ -18,6 +18,7 @@ const router = createRouter({
     },
     {
       path: '/',
+      name: 'Main',
       component: () => import('@/layout/MainLayout.vue'),
       meta: { requiresAuth: true },
       redirect: '/dashboard',
@@ -88,18 +89,17 @@ const router = createRouter({
           component: () => import('@/views/role/RoleView.vue'),
           meta: { title: '角色与权限' },
         },
-        {
-          path: 'company/approval',
-          name: 'Approval',
-          component: () => import('@/views/approval/ApprovalView.vue'),
-          meta: { title: '审批中心' },
-        },
+        // Note: 'company/approval' and other business modules are registered
+        // dynamically from module_registry (see beforeEach below).
       ],
     },
     { path: '/403', name: 'Forbidden', component: () => import('@/views/403View.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/403' },
   ],
 })
+
+// Dynamically registered module routes (from module_registry)
+let moduleRoutesReady = false
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
@@ -112,6 +112,23 @@ router.beforeEach(async (to) => {
       await auth.logout()
       return '/login'
     }
+  }
+  // Register dynamic business-module routes once per session
+  if (auth.isLoggedIn && !moduleRoutesReady) {
+    if (!auth.modulesLoaded) await auth.fetchModules()
+    for (const m of auth.modules) {
+      const relPath = m.entryUrl.replace(/^\//, '')
+      if (!relPath) continue
+      router.addRoute('Main', {
+        path: relPath,
+        name: 'module-' + m.moduleCode,
+        component: () => import('@/views/module/ModuleHostView.vue'),
+        meta: { title: m.moduleName, moduleCode: m.moduleCode },
+      })
+    }
+    moduleRoutesReady = true
+    // Re-trigger navigation so the freshly added routes can be matched
+    return { ...to, replace: true }
   }
   // Force password change if required
   if (auth.userInfo?.pwdResetRequired && !to.meta.skipPwdCheck) {
