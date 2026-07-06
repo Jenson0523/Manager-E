@@ -242,7 +242,25 @@ public class ApprovalEngineService {
         List<WfNode> nodes = nodeMapper.selectList(new LambdaQueryWrapper<WfNode>()
             .eq(WfNode::getInstanceId, instanceId)
             .orderByAsc(WfNode::getNodeOrder));
+
+        // 数据权限:申请人 / 审批链上的人 / 持 manage 权限,三者之一方可见(防同租户越权窥看)
+        Long me = TenantContext.getUserId();
+        boolean related = instance.getApplicantId().equals(me)
+            || nodes.stream().anyMatch(n -> me.equals(n.getApproverId()) || me.equals(n.getActionBy()));
+        if (!related && !hasManageAuthority()) {
+            throw new BusinessException(403, "无权查看该审批");
+        }
         return toVO(instance, nodes);
+    }
+
+    private boolean hasManageAuthority() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+            .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+            .anyMatch(a -> "PERM_*".equals(a)
+                || "PERM_approval:manage".equals(a)
+                || "PERM_platform:approval:manage".equals(a));
     }
 
     public List<ApprovalInstanceVO> myTodo(Long userId) {
@@ -288,6 +306,30 @@ public class ApprovalEngineService {
             .sorted((a, b) -> b.getId().compareTo(a.getId()))
             .map(i -> toVO(i, List.of()))
             .toList();
+    }
+
+    /** 撤回：申请人撤回自己的审批中实例,全部未完成节点作废 */
+    @Transactional
+    public void cancel(Long instanceId, Long operatorId, String operatorName) {
+        Long tenantId = TenantContext.getTenantId();
+        WfInstance instance = instanceMapper.selectById(instanceId);
+        if (instance == null || !instance.getTenantId().equals(tenantId)) {
+            throw new BusinessException(404, "审批实例不存在");
+        }
+        if (!instance.getApplicantId().equals(operatorId)) {
+            throw new BusinessException(403, "只能撤回自己发起的审批");
+        }
+        if (!"PENDING".equals(instance.getStatus())) {
+            throw new BusinessException(409, "该审批已结束,无法撤回");
+        }
+        String before = instance.getStatus();
+        instance.setStatus("CANCELED");
+        instance.setCurrentNode(null);
+        instanceMapper.updateById(instance);
+        jdbcTemplate.update(
+            "UPDATE wf_node SET status = 'CANCELED' WHERE instance_id = ? AND status IN ('WAITING','APPROVING')",
+            instanceId);
+        writeRecord(instanceId, null, operatorId, operatorName, "CANCEL", null, before, "CANCELED");
     }
 
     /** 转交：当前审批人把自己的待办节点移交给同租户其他用户 */

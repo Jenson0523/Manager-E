@@ -37,6 +37,74 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 撤回:申请人可撤回审批中的实例;详情越权:非相关人且无 manage 权限 -> 403 */
+    @Test
+    void cancelAndDetailPrivacy() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String tokenA = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+
+        // 局外人C:仅 approval:view + approval:cancel(无 manage,不在审批链上)
+        String userC = "outsider_" + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, " +
+            "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
+            "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())",
+            seeded.tenantId(), "U-OUT", userC, OrgTestSupport.ADMIN_PWD_HASH, "局外人C", "13977778888");
+        Long uidC = jdbcTemplate.queryForObject("SELECT id FROM user WHERE username = ?", Long.class, userC);
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, is_deleted, created_at, updated_at) " +
+            "VALUES (?,?,?,?,0,1,0,NOW(),NOW())", seeded.tenantId(), "只读审批", "ro_appr_" + System.nanoTime(), "all");
+        Long roRoleId = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id = ? ORDER BY id DESC LIMIT 1", Long.class, seeded.tenantId());
+        jdbcTemplate.update("INSERT INTO user_role (user_id, role_id, created_at) VALUES (?,?,NOW())", uidC, roRoleId);
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id, permission_id, created_at) " +
+            "SELECT ?, id, NOW() FROM permission WHERE code IN ('approval:view','approval:cancel')", roRoleId);
+        String tokenC = OrgTestSupport.login(mockMvc, objectMapper, userC);
+
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"cxl\",\"formName\":\"撤回单\",\"processKey\":\"CXL\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"cxl\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long id = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // 越权: C 看详情 403; 申请人(也是审批人)可看
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + tokenC))
+                .andExpect(jsonPath("$.code").value(403));
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // C 撤回别人的单 -> 403; 申请人撤回 -> CANCELED; 再撤 -> 409
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/cancel")
+                .header("Authorization", "Bearer " + tokenC))
+                .andExpect(jsonPath("$.code").value(403));
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/cancel")
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.data.status").value("CANCELED"));
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/cancel")
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.code").value(409));
+        // 撤回后审批人待办应为空
+        mockMvc.perform(get("/api/v1/approval/todo")
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
     /** 消息中心:待办通知审批人,通过后通知申请人;已读/全读 */
     @Test
     void noticesFlowWithApproval() throws Exception {

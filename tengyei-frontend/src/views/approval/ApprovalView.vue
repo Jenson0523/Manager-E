@@ -24,6 +24,9 @@ const canTransfer = computed(
 const canDelegate = computed(
   () => auth.hasPermission('PERM_approval:delegate') || auth.hasPermission('PERM_platform:approval:delegate')
 )
+const canCancel = computed(
+  () => auth.hasPermission('PERM_approval:cancel') || auth.hasPermission('PERM_platform:approval:cancel')
+)
 const isOverdue = (t?: string) => !!t && new Date(t) < new Date()
 
 const activeTab = ref('todo')
@@ -126,6 +129,17 @@ async function act(action: 'APPROVE' | 'REJECT') {
   if (!detail.value) return
   await approvalApi.act(detail.value.id, action, actComment.value)
   ElMessage.success(action === 'APPROVE' ? '已通过' : '已驳回')
+  detailDialog.value = false
+  loadTab(activeTab.value)
+}
+
+/* 撤回(申请人本人) */
+const isMyApply = computed(() => detail.value?.applicantId === auth.userInfo?.userId)
+async function cancelInstance() {
+  if (!detail.value) return
+  await ElMessageBox.confirm('确认撤回该审批？撤回后需重新发起。', '提示', { type: 'warning' })
+  await approvalApi.cancel(detail.value.id)
+  ElMessage.success('已撤回')
   detailDialog.value = false
   loadTab(activeTab.value)
 }
@@ -518,9 +532,12 @@ onMounted(() => loadTab('todo'))
       <template #footer>
         <el-button @click="detailDialog = false">关闭</el-button>
         <template v-if="detail?.status === 'PENDING'">
+          <el-button v-if="isMyApply && canCancel" @click="cancelInstance">撤回</el-button>
           <el-button v-if="isMyTurn && canTransfer" @click="openTransfer">转交</el-button>
-          <el-button type="danger" @click="act('REJECT')">驳回</el-button>
-          <el-button type="primary" @click="act('APPROVE')">通过</el-button>
+          <template v-if="isMyTurn">
+            <el-button type="danger" @click="act('REJECT')">驳回</el-button>
+            <el-button type="primary" @click="act('APPROVE')">通过</el-button>
+          </template>
         </template>
       </template>
     </el-dialog>

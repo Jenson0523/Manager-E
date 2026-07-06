@@ -35,6 +35,14 @@ public class ApprovalInstanceController {
         return Result.ok(engineService.detail(id));
     }
 
+    @PutMapping("/{id}/cancel")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:cancel','PERM_platform:approval:cancel')")
+    @Auditable(module = "审批", actionType = "UPDATE", description = "撤回审批")
+    public Result<Void> cancel(@PathVariable Long id) {
+        engineService.cancel(id, TenantContext.getUserId(), TenantContext.getUserName());
+        return Result.ok();
+    }
+
     @PutMapping("/{id}/transfer")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:transfer','PERM_platform:approval:transfer')")
     @Auditable(module = "审批", actionType = "UPDATE", description = "审批转交")
