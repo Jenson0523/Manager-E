@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { HomeFilled, OfficeBuilding, Share, User, Lock, Document, Setting, Loading } from '@element-plus/icons-vue'
+import { HomeFilled, OfficeBuilding, Share, User, Lock, Document, Setting, Loading, Grid } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
@@ -16,6 +16,7 @@ const iconMap: Record<string, Component> = {
   '/admin/companies': OfficeBuilding,
   '/admin/audit-logs': Document,
   '/admin/system-config': Setting,
+  '/admin/modules': Grid,
   '/admin/users': User,
   '/admin/roles': Lock,
   '/company/org': Share,
@@ -29,6 +30,7 @@ const titleMap: Record<string, string> = {
   '/admin/companies': '企业管理',
   '/admin/audit-logs': '操作日志',
   '/admin/system-config': '系统设置',
+  '/admin/modules': '模块管理',
   '/admin/users': '平台人员',
   '/admin/roles': '平台角色',
   '/company/org': '组织管理',

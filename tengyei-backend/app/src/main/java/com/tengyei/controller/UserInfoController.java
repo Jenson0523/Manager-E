@@ -88,6 +88,7 @@ public class UserInfoController {
         if (all || has(permissions, "platform:role:view"))      routes.add(route("/admin/roles", "平台角色"));
         if (all || has(permissions, "platform:audit:view"))     routes.add(route("/admin/audit-logs", "操作日志"));
         if (all || has(permissions, "platform:config:view"))    routes.add(route("/admin/system-config", "系统设置"));
+        if (all || has(permissions, "platform:module:view"))    routes.add(route("/admin/modules", "模块管理"));
         if (all || hasAny(permissions, "platform:approval:view", "platform:approval:apply"))
             routes.add(route("/company/approval", "审批中心"));
         return routes;

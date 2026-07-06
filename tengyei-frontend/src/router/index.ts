@@ -53,6 +53,12 @@ const router = createRouter({
           meta: { title: '系统设置' },
         },
         {
+          path: 'admin/modules',
+          name: 'ModuleRegistry',
+          component: () => import('@/views/module/ModuleRegistryView.vue'),
+          meta: { title: '模块管理' },
+        },
+        {
           path: 'admin/users',
           name: 'PlatformUsers',
           component: () => import('@/views/platform/PlatformUserListView.vue'),
