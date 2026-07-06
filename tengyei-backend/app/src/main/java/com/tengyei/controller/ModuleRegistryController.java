@@ -44,7 +44,7 @@ public class ModuleRegistryController {
             "SELECT id, module_code AS moduleCode, module_name AS moduleName, " +
             "version, entry_url AS entryUrl, menu_config AS menuConfig, " +
             "permissions, status, created_at AS createdAt, updated_at AS updatedAt " +
-            "FROM module_registry " + where + " ORDER BY sort_order, id",
+            "FROM module_registry " + where + " ORDER BY id",
             params.toArray()
         );
 
