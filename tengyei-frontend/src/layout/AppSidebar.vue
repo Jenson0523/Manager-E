@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { HomeFilled, OfficeBuilding, Share, User, Lock, Document, Setting, Loading, Grid } from '@element-plus/icons-vue'
+import { HomeFilled, OfficeBuilding, Share, User, Lock, Document, Setting, Loading, Grid, Bell } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
@@ -23,6 +23,7 @@ const iconMap: Record<string, Component> = {
   '/company/users': User,
   '/company/roles': Lock,
   '/company/approval': Document,
+  '/announcements': Bell,
 }
 
 const titleMap: Record<string, string> = {
@@ -37,6 +38,7 @@ const titleMap: Record<string, string> = {
   '/company/users': '人员管理',
   '/company/roles': '角色与权限',
   '/company/approval': '审批中心',
+  '/announcements': '通知管理',
 }
 
 const menuRoutes = computed(() => auth.routes)

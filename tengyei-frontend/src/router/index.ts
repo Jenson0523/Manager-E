@@ -89,6 +89,12 @@ const router = createRouter({
           component: () => import('@/views/role/RoleView.vue'),
           meta: { title: '角色与权限' },
         },
+        {
+          path: 'announcements',
+          name: 'Announcements',
+          component: () => import('@/views/announcement/AnnouncementManageView.vue'),
+          meta: { title: '通知管理' },
+        },
         // Note: 'company/approval' and other business modules are registered
         // dynamically from module_registry (see beforeEach below).
       ],

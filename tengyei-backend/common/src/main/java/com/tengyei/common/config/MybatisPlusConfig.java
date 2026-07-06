@@ -23,7 +23,9 @@ public class MybatisPlusConfig {
 
     private static final Set<String> IGNORE_TABLES = new HashSet<>(Arrays.asList(
         "company", "permission", "role_permission", "user_role",
-        "module_registry", "login_log"
+        "module_registry", "login_log",
+        // 公告跨租户可见(平台发企业收),AnnouncementService 内所有查询显式限定 tenant_id
+        "sys_announcement"
     ));
 
     @Bean
