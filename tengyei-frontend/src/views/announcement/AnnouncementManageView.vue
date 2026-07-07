@@ -3,6 +3,10 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { announcementApi, type AnnouncementVO } from '@/api/announcement'
 import { companyApi } from '@/api/company'
+import { deptApi } from '@/api/org'
+import { roleApi } from '@/api/rbac'
+import type { DeptTreeVO } from '@/types/org'
+import type { RoleVO } from '@/types/rbac'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/utils/responsive'
 
@@ -31,6 +35,11 @@ const LEVEL_TAG: Record<string, 'info' | 'warning' | 'danger'> = {
   WARN: 'warning',
   URGENT: 'danger',
 }
+const AUDIENCE_LABEL: Record<string, string> = {
+  ALL: '全体成员',
+  DEPT: '指定部门',
+  ROLE: '指定角色',
+}
 
 /* 编辑弹窗 */
 const dialog = ref(false)
@@ -42,10 +51,18 @@ const form = reactive({
   linkUrl: '',
   targetScope: 'SELF',
   targetIds: [] as number[],
+  audienceType: 'ALL',
+  audienceIds: [] as number[],
   startAt: '',
   endAt: '',
   status: 1,
 })
+const deptTree = ref<DeptTreeVO[]>([])
+const roleOptions = ref<RoleVO[]>([])
+async function loadAudienceOptions() {
+  if (!deptTree.value.length) deptApi.tree().then((d) => (deptTree.value = d))
+  if (!roleOptions.value.length) roleApi.list().then((r) => (roleOptions.value = r))
+}
 const companyOptions = ref<{ id: number; name: string }[]>([])
 async function loadCompanies() {
   if (companyOptions.value.length) return
@@ -55,9 +72,11 @@ async function loadCompanies() {
 function openCreate() {
   Object.assign(form, {
     id: undefined, title: '', content: '', level: 'INFO', linkUrl: '',
-    targetScope: 'SELF', targetIds: [], startAt: '', endAt: '', status: 1,
+    targetScope: 'SELF', targetIds: [], audienceType: 'ALL', audienceIds: [],
+    startAt: '', endAt: '', status: 1,
   })
   if (isPlatform.value) loadCompanies()
+  loadAudienceOptions()
   dialog.value = true
 }
 function openEdit(row: AnnouncementVO) {
@@ -69,11 +88,14 @@ function openEdit(row: AnnouncementVO) {
     linkUrl: row.linkUrl ?? '',
     targetScope: row.targetScope,
     targetIds: row.targetIds ? row.targetIds.split(',').map(Number) : [],
+    audienceType: row.audienceType ?? 'ALL',
+    audienceIds: row.audienceIds ? row.audienceIds.split(',').map(Number) : [],
     startAt: row.startAt ?? '',
     endAt: row.endAt ?? '',
     status: row.status,
   })
   if (isPlatform.value) loadCompanies()
+  loadAudienceOptions()
   dialog.value = true
 }
 async function submit() {
@@ -89,6 +111,8 @@ async function submit() {
     linkUrl: form.linkUrl || undefined,
     targetScope: form.targetScope,
     targetIds: form.targetScope === 'COMPANIES' ? form.targetIds : undefined,
+    audienceType: form.audienceType,
+    audienceIds: form.audienceType !== 'ALL' ? form.audienceIds : undefined,
     startAt: form.startAt || undefined,
     endAt: form.endAt || undefined,
     status: form.status,
@@ -112,6 +136,8 @@ async function toggle(row: AnnouncementVO) {
     linkUrl: row.linkUrl,
     targetScope: row.targetScope,
     targetIds: row.targetIds ? row.targetIds.split(',').map(Number) : undefined,
+    audienceType: row.audienceType ?? 'ALL',
+    audienceIds: row.audienceIds ? row.audienceIds.split(',').map(Number) : undefined,
     startAt: row.startAt,
     endAt: row.endAt,
     status: row.status === 1 ? 0 : 1,
@@ -141,6 +167,11 @@ onMounted(fetchList)
       <el-table-column v-if="isPlatform" label="发送范围" width="110">
         <template #default="{ row }">
           {{ SCOPE_LABEL[(row as AnnouncementVO).targetScope] }}
+        </template>
+      </el-table-column>
+      <el-table-column label="接收范围" width="110">
+        <template #default="{ row }">
+          {{ AUDIENCE_LABEL[(row as AnnouncementVO).audienceType ?? 'ALL'] }}
         </template>
       </el-table-column>
       <el-table-column prop="startAt" label="开始" width="160" />
@@ -188,6 +219,30 @@ onMounted(fetchList)
         <el-form-item v-if="isPlatform && form.targetScope === 'COMPANIES'" label="目标企业">
           <el-select v-model="form.targetIds" multiple filterable style="width: 100%">
             <el-option v-for="c in companyOptions" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="接收范围">
+          <el-select v-model="form.audienceType" style="width: 100%" @change="form.audienceIds = []">
+            <el-option label="全体成员" value="ALL" />
+            <el-option label="指定部门" value="DEPT" />
+            <el-option label="指定角色" value="ROLE" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.audienceType === 'DEPT'" label="接收部门">
+          <el-tree-select
+            v-model="form.audienceIds"
+            :data="deptTree"
+            node-key="id"
+            :props="{ label: 'name' }"
+            multiple
+            show-checkbox
+            check-strictly
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item v-if="form.audienceType === 'ROLE'" label="接收角色">
+          <el-select v-model="form.audienceIds" multiple filterable style="width: 100%">
+            <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="跳转链接">

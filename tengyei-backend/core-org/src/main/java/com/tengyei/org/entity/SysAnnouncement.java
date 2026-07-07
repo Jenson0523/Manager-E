@@ -18,6 +18,8 @@ public class SysAnnouncement extends BaseEntity {
     private String linkUrl;
     private String targetScope;
     private String targetIds;
+    private String audienceType;
+    private String audienceIds;
     private LocalDateTime startAt;
     private LocalDateTime endAt;
     private Integer status;

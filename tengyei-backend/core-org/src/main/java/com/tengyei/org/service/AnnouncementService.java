@@ -33,12 +33,13 @@ public class AnnouncementService {
         LocalDateTime now = LocalDateTime.now();
         List<Map<String, Object>> banners = new ArrayList<>();
 
-        // 1) 本租户自己发布的
-        List<SysAnnouncement> stored = new ArrayList<>(announcementMapper.selectList(
+        // 1) 本租户自己发布的(再按 部门/角色 定向过滤)
+        List<SysAnnouncement> stored = announcementMapper.selectList(
             new LambdaQueryWrapper<SysAnnouncement>()
                 .eq(SysAnnouncement::getTenantId, tenantId)
                 .eq(SysAnnouncement::getTargetScope, "SELF")
-                .eq(SysAnnouncement::getStatus, 1)));
+                .eq(SysAnnouncement::getStatus, 1))
+            .stream().filter(a -> matchesAudience(a, userId)).collect(Collectors.toCollection(ArrayList::new));
 
         // 2) 平台定向发给企业的(公司用户才收)
         if (tenantId != null && tenantId != 0L) {
@@ -99,6 +100,18 @@ public class AnnouncementService {
         return banners;
     }
 
+    /** 租户内定向:ALL 或 用户属于指定 部门/角色 */
+    private boolean matchesAudience(SysAnnouncement a, Long userId) {
+        String type = a.getAudienceType();
+        if (type == null || "ALL".equals(type) || a.getAudienceIds() == null) return true;
+        String table = "DEPT".equals(type) ? "user_dept" : "user_role";
+        String col = "DEPT".equals(type) ? "dept_id" : "role_id";
+        List<Long> mine = jdbcTemplate.queryForList(
+            "SELECT " + col + " FROM " + table + " WHERE user_id = ?", Long.class, userId);
+        return Arrays.stream(a.getAudienceIds().split(","))
+            .anyMatch(id -> mine.contains(Long.valueOf(id.trim())));
+    }
+
     /** 管理列表:本租户发布的全部公告 */
     public List<SysAnnouncement> list() {
         return announcementMapper.selectList(new LambdaQueryWrapper<SysAnnouncement>()
@@ -118,6 +131,14 @@ public class AnnouncementService {
         }
         if ("COMPANIES".equals(scope) && (dto.getTargetIds() == null || dto.getTargetIds().isEmpty())) {
             throw new BusinessException(422, "请选择目标企业");
+        }
+        String audience = dto.getAudienceType() != null ? dto.getAudienceType() : "ALL";
+        if (!List.of("ALL", "DEPT", "ROLE").contains(audience)) {
+            throw new BusinessException(422, "接收范围无效");
+        }
+        if (!"ALL".equals(audience)
+                && (dto.getAudienceIds() == null || dto.getAudienceIds().isEmpty())) {
+            throw new BusinessException(422, "请选择接收部门或角色");
         }
 
         SysAnnouncement a;
@@ -139,6 +160,9 @@ public class AnnouncementService {
         a.setTargetIds("COMPANIES".equals(scope)
             ? dto.getTargetIds().stream().map(String::valueOf).collect(Collectors.joining(","))
             : null);
+        a.setAudienceType(audience);
+        a.setAudienceIds("ALL".equals(audience) ? null
+            : dto.getAudienceIds().stream().map(String::valueOf).collect(Collectors.joining(",")));
         a.setStartAt(dto.getStartAt());
         a.setEndAt(dto.getEndAt());
         a.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);

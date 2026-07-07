@@ -16,6 +16,8 @@ public class AnnouncementSaveDTO {
     private String linkUrl;
     private String targetScope;
     private List<Long> targetIds;
+    private String audienceType;
+    private List<Long> audienceIds;
     private LocalDateTime startAt;
     private LocalDateTime endAt;
     private Integer status;

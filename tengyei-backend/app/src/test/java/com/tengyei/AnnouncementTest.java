@@ -59,11 +59,25 @@ class AnnouncementTest {
                 .content("{\"title\":\"越权\",\"targetScope\":\"ALL_COMPANIES\"}"))
                 .andExpect(jsonPath("$.code").value(403));
 
-        // 公司 /active: 看到 全员公告+自发公告,看不到 定向他司
+        // 公司内定向:发给不存在的部门888 -> 自己看不到;发给自己的角色 -> 看得到
+        mockMvc.perform(post("/api/v1/announcements")
+                .header("Authorization", "Bearer " + companyToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"他部门通知\",\"audienceType\":\"DEPT\",\"audienceIds\":[888]}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(post("/api/v1/announcements")
+                .header("Authorization", "Bearer " + companyToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"本角色通知\",\"audienceType\":\"ROLE\",\"audienceIds\":[" + seeded.roleId() + "]}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 公司 /active: 看到 全员公告+自发公告+本角色定向,看不到 定向他司/他部门
         mockMvc.perform(get("/api/v1/announcements/active")
                 .header("Authorization", "Bearer " + companyToken))
                 .andExpect(jsonPath("$.data[*].title", hasItem("全员系统升级公告")))
                 .andExpect(jsonPath("$.data[*].title", hasItem("公司内部通知")))
+                .andExpect(jsonPath("$.data[*].title", hasItem("本角色通知")))
+                .andExpect(jsonPath("$.data[*].title", not(hasItem("他部门通知"))))
                 .andExpect(jsonPath("$.data[*].title", not(hasItem("定向他司公告"))));
         // 平台 /active: 看不到公司自发的
         mockMvc.perform(get("/api/v1/announcements/active")

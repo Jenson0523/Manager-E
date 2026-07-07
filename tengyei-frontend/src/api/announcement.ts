@@ -16,6 +16,8 @@ export interface AnnouncementVO {
   linkUrl?: string
   targetScope: 'SELF' | 'ALL_COMPANIES' | 'COMPANIES'
   targetIds?: string
+  audienceType?: 'ALL' | 'DEPT' | 'ROLE'
+  audienceIds?: string
   startAt?: string
   endAt?: string
   status: number
@@ -31,6 +33,8 @@ export interface AnnouncementSaveDTO {
   linkUrl?: string
   targetScope?: string
   targetIds?: number[]
+  audienceType?: string
+  audienceIds?: number[]
   startAt?: string
   endAt?: string
   status?: number
