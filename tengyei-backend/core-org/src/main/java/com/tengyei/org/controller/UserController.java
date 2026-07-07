@@ -33,7 +33,7 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERM_user:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:view')")
     public Result<PageResult<UserVO>> page(
             @RequestParam(name = "page", defaultValue = "1") long page,
             @RequestParam(name = "size", defaultValue = "20") long size,
@@ -44,13 +44,13 @@ public class UserController {
     }
 
     @GetMapping("/quota")
-    @PreAuthorize("hasAuthority('PERM_user:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:view')")
     public Result<java.util.Map<String, Integer>> quota() {
         return Result.ok(userService.quota());
     }
 
     @GetMapping("/export")
-    @PreAuthorize("hasAuthority('PERM_user:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:view')")
     public void export(
             @RequestParam(name = "keyword", required = false) String keyword,
             @RequestParam(name = "deptId", required = false) Long deptId,
@@ -68,7 +68,7 @@ public class UserController {
     }
 
     @PutMapping("/batch/status")
-    @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "BATCH_UPDATE", description = "批量变更人员状态")
     public Result<Void> batchStatus(@Valid @RequestBody BatchStatusDTO dto) {
         if (dto.getIds().size() > 200) {
@@ -79,7 +79,7 @@ public class UserController {
     }
 
     @PutMapping("/batch/roles")
-    @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "BATCH_UPDATE", description = "批量分配角色")
     public Result<Void> batchRoles(@Valid @RequestBody BatchRolesDTO dto) {
         if (dto.getIds().size() > 200) {
@@ -90,14 +90,14 @@ public class UserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('PERM_user:create')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:create')")
     @Auditable(module = "人员管理", actionType = "CREATE", description = "新建人员")
     public Result<Map<String, Long>> create(@Valid @RequestBody UserCreateDTO dto) {
         return Result.ok(Map.of("id", userService.create(dto)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "编辑人员信息")
     public Result<Void> update(@PathVariable(name="id") Long id, @Valid @RequestBody UserUpdateDTO dto) {
         userService.update(id, dto);
@@ -105,7 +105,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "变更人员状态")
     public Result<Void> changeStatus(@PathVariable(name="id") Long id, @RequestBody Map<String, Integer> body) {
         userService.changeStatus(id, body.get("status"));
@@ -113,7 +113,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/roles")
-    @PreAuthorize("hasAuthority('PERM_user:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "UPDATE", description = "分配人员角色")
     public Result<Void> assignRoles(@PathVariable(name="id") Long id, @RequestBody Map<String, List<Long>> body) {
         userService.assignRoles(id, body.get("roleIds"));

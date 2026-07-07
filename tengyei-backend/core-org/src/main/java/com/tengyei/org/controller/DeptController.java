@@ -21,20 +21,20 @@ public class DeptController {
     private final DeptService deptService;
 
     @GetMapping("/tree")
-    @PreAuthorize("hasAuthority('PERM_dept:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_dept:view')")
     public Result<List<DeptTreeVO>> tree() {
         return Result.ok(deptService.tree());
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('PERM_dept:create')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_dept:create')")
     @Auditable(module = "部门管理", actionType = "CREATE", description = "新建部门")
     public Result<Map<String, Long>> create(@Valid @RequestBody DeptSaveDTO dto) {
         return Result.ok(Map.of("id", deptService.create(dto)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_dept:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_dept:edit')")
     @Auditable(module = "部门管理", actionType = "UPDATE", description = "编辑部门")
     public Result<Void> update(@PathVariable(name="id") Long id, @Valid @RequestBody DeptSaveDTO dto) {
         deptService.update(id, dto);
@@ -42,7 +42,7 @@ public class DeptController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_dept:delete')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_dept:delete')")
     @Auditable(module = "部门管理", actionType = "DELETE", description = "删除部门")
     public Result<Void> delete(@PathVariable(name="id") Long id) {
         deptService.delete(id);

@@ -22,7 +22,7 @@ public class BranchController {
     private final BranchService branchService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERM_branch:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:view')")
     public Result<PageResult<BranchVO>> page(
             @RequestParam(name = "page", defaultValue = "1") long page,
             @RequestParam(name = "size", defaultValue = "20") long size,
@@ -31,14 +31,14 @@ public class BranchController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('PERM_branch:create')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:create')")
     @Auditable(module = "分公司管理", actionType = "CREATE", description = "新建分公司")
     public Result<Map<String, Long>> create(@Valid @RequestBody BranchSaveDTO dto) {
         return Result.ok(Map.of("id", branchService.create(dto)));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_branch:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:edit')")
     @Auditable(module = "分公司管理", actionType = "UPDATE", description = "编辑分公司信息")
     public Result<Void> update(@PathVariable(name="id") Long id, @Valid @RequestBody BranchSaveDTO dto) {
         branchService.update(id, dto);
@@ -46,7 +46,7 @@ public class BranchController {
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('PERM_branch:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:edit')")
     @Auditable(module = "分公司管理", actionType = "UPDATE", description = "变更分公司状态")
     public Result<Void> changeStatus(@PathVariable(name="id") Long id, @RequestBody Map<String, Integer> body) {
         branchService.changeStatus(id, body.get("status"));
@@ -57,14 +57,14 @@ public class BranchController {
 
     /** 获取分公司关联的部门ID列表 */
     @GetMapping("/{branchId}/depts")
-    @PreAuthorize("hasAuthority('PERM_branch:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:view')")
     public Result<List<Long>> getDepts(@PathVariable(name="branchId") Long branchId) {
         return Result.ok(branchService.getDeptIds(branchId));
     }
 
     /** 批量关联部门到分公司 */
     @PostMapping("/{branchId}/depts")
-    @PreAuthorize("hasAuthority('PERM_branch:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:edit')")
     @Auditable(module = "分公司管理", actionType = "UPDATE", description = "关联部门到分公司")
     public Result<Void> linkDepts(@PathVariable(name="branchId") Long branchId, @RequestBody Map<String, List<Long>> body) {
         branchService.linkDepts(branchId, body.get("deptIds"));
@@ -72,7 +72,7 @@ public class BranchController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('PERM_branch:delete')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:delete')")
     @Auditable(module = "分公司管理", actionType = "DELETE", description = "删除分公司")
     public Result<Void> delete(@PathVariable(name="id") Long id) {
         branchService.delete(id);
@@ -81,7 +81,7 @@ public class BranchController {
 
     /** 解除分公司与部门的关联 */
     @DeleteMapping("/{branchId}/depts/{deptId}")
-    @PreAuthorize("hasAuthority('PERM_branch:edit')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_branch:edit')")
     @Auditable(module = "分公司管理", actionType = "UPDATE", description = "解除分公司-部门关联")
     public Result<Void> unlinkDept(@PathVariable(name="branchId") Long branchId, @PathVariable(name="deptId") Long deptId) {
         branchService.unlinkDept(branchId, deptId);

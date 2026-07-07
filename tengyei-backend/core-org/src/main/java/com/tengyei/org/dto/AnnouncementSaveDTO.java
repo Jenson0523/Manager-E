@@ -13,7 +13,6 @@ public class AnnouncementSaveDTO {
     private String title;
     private String content;
     private String level;
-    private String linkUrl;
     private String targetScope;
     private List<Long> targetIds;
     private String audienceType;

@@ -48,7 +48,6 @@ const form = reactive({
   title: '',
   content: '',
   level: 'INFO',
-  linkUrl: '',
   targetScope: 'SELF',
   targetIds: [] as number[],
   audienceType: 'ALL',
@@ -71,7 +70,7 @@ async function loadCompanies() {
 }
 function openCreate() {
   Object.assign(form, {
-    id: undefined, title: '', content: '', level: 'INFO', linkUrl: '',
+    id: undefined, title: '', content: '', level: 'INFO',
     targetScope: 'SELF', targetIds: [], audienceType: 'ALL', audienceIds: [],
     startAt: '', endAt: '', status: 1,
   })
@@ -85,7 +84,6 @@ function openEdit(row: AnnouncementVO) {
     title: row.title,
     content: row.content ?? '',
     level: row.level,
-    linkUrl: row.linkUrl ?? '',
     targetScope: row.targetScope,
     targetIds: row.targetIds ? row.targetIds.split(',').map(Number) : [],
     audienceType: row.audienceType ?? 'ALL',
@@ -108,7 +106,6 @@ async function submit() {
     title: form.title,
     content: form.content || undefined,
     level: form.level,
-    linkUrl: form.linkUrl || undefined,
     targetScope: form.targetScope,
     targetIds: form.targetScope === 'COMPANIES' ? form.targetIds : undefined,
     audienceType: form.audienceType,
@@ -133,7 +130,6 @@ async function toggle(row: AnnouncementVO) {
     title: row.title,
     content: row.content,
     level: row.level,
-    linkUrl: row.linkUrl,
     targetScope: row.targetScope,
     targetIds: row.targetIds ? row.targetIds.split(',').map(Number) : undefined,
     audienceType: row.audienceType ?? 'ALL',
@@ -171,7 +167,9 @@ onMounted(fetchList)
       </el-table-column>
       <el-table-column label="接收范围" width="110">
         <template #default="{ row }">
-          {{ AUDIENCE_LABEL[(row as AnnouncementVO).audienceType ?? 'ALL'] }}
+          {{ (row as AnnouncementVO).targetScope === 'SELF'
+            ? AUDIENCE_LABEL[(row as AnnouncementVO).audienceType ?? 'ALL']
+            : '—' }}
         </template>
       </el-table-column>
       <el-table-column prop="startAt" label="开始" width="160" />
@@ -210,7 +208,11 @@ onMounted(fetchList)
           </el-select>
         </el-form-item>
         <el-form-item v-if="isPlatform" label="发送范围">
-          <el-select v-model="form.targetScope" style="width: 100%">
+          <el-select
+            v-model="form.targetScope"
+            style="width: 100%"
+            @change="form.audienceType = 'ALL'; form.audienceIds = []"
+          >
             <el-option label="仅平台内部" value="SELF" />
             <el-option label="全部企业" value="ALL_COMPANIES" />
             <el-option label="指定企业" value="COMPANIES" />
@@ -221,14 +223,14 @@ onMounted(fetchList)
             <el-option v-for="c in companyOptions" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="接收范围">
+        <el-form-item v-if="form.targetScope === 'SELF'" label="接收范围">
           <el-select v-model="form.audienceType" style="width: 100%" @change="form.audienceIds = []">
             <el-option label="全体成员" value="ALL" />
             <el-option label="指定部门" value="DEPT" />
             <el-option label="指定角色" value="ROLE" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="form.audienceType === 'DEPT'" label="接收部门">
+        <el-form-item v-if="form.targetScope === 'SELF' && form.audienceType === 'DEPT'" label="接收部门">
           <el-tree-select
             v-model="form.audienceIds"
             :data="deptTree"
@@ -240,13 +242,10 @@ onMounted(fetchList)
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item v-if="form.audienceType === 'ROLE'" label="接收角色">
+        <el-form-item v-if="form.targetScope === 'SELF' && form.audienceType === 'ROLE'" label="接收角色">
           <el-select v-model="form.audienceIds" multiple filterable style="width: 100%">
             <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="跳转链接">
-          <el-input v-model="form.linkUrl" placeholder="站内路径,如 /company/approval,可空" />
         </el-form-item>
         <el-form-item label="展示时间">
           <div style="display: flex; gap: 8px; width: 100%">

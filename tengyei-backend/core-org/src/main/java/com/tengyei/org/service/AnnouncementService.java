@@ -61,7 +61,8 @@ public class AnnouncementService {
             .filter(a -> (a.getStartAt() == null || !a.getStartAt().isAfter(now))
                       && (a.getEndAt() == null || !a.getEndAt().isBefore(now)))
             .sorted((x, y) -> y.getId().compareTo(x.getId()))
-            .forEach(a -> banners.add(banner(a.getId(), a.getTitle(), a.getContent(), a.getLevel(), a.getLinkUrl())));
+            // 发布的公告点击统一进通知管理;系统计算横幅在下方各自带跳转
+            .forEach(a -> banners.add(banner(a.getId(), a.getTitle(), a.getContent(), a.getLevel(), "/announcements")));
 
         // 3) 系统计算:待办审批(有超时则升级为紧急)
         Map<String, Object> todo = jdbcTemplate.queryForList(
@@ -132,7 +133,8 @@ public class AnnouncementService {
         if ("COMPANIES".equals(scope) && (dto.getTargetIds() == null || dto.getTargetIds().isEmpty())) {
             throw new BusinessException(422, "请选择目标企业");
         }
-        String audience = dto.getAudienceType() != null ? dto.getAudienceType() : "ALL";
+        // 发给企业(整司)时不做租户内定向;仅本单位发布可选部门/角色
+        String audience = "SELF".equals(scope) && dto.getAudienceType() != null ? dto.getAudienceType() : "ALL";
         if (!List.of("ALL", "DEPT", "ROLE").contains(audience)) {
             throw new BusinessException(422, "接收范围无效");
         }
@@ -155,7 +157,6 @@ public class AnnouncementService {
         a.setTitle(dto.getTitle());
         a.setContent(dto.getContent());
         a.setLevel(dto.getLevel() != null ? dto.getLevel() : "INFO");
-        a.setLinkUrl(dto.getLinkUrl());
         a.setTargetScope(scope);
         a.setTargetIds("COMPANIES".equals(scope)
             ? dto.getTargetIds().stream().map(String::valueOf).collect(Collectors.joining(","))

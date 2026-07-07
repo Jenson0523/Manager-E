@@ -30,7 +30,6 @@ export interface AnnouncementSaveDTO {
   title: string
   content?: string
   level?: string
-  linkUrl?: string
   targetScope?: string
   targetIds?: number[]
   audienceType?: string
