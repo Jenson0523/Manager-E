@@ -68,6 +68,15 @@ public class CompanyController {
         return Result.ok();
     }
 
+    /** 企业自改本公司 logo(企业管理员,无需平台权限) */
+    @PutMapping("/my/logo")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_company:info:edit')")
+    @Auditable(module = "企业管理", actionType = "UPDATE", description = "更新企业Logo")
+    public Result<Void> updateMyLogo(@RequestBody Map<String, String> body) {
+        companyService.updateMyLogo(body.get("logoUrl"));
+        return Result.ok();
+    }
+
     @PutMapping("/{id}/reset-admin-password")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:company:edit')")
     @Auditable(module = "企业管理", actionType = "UPDATE", description = "重置企业管理员密码")

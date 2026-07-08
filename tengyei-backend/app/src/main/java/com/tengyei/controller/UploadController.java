@@ -28,7 +28,7 @@ public class UploadController {
     private String uploadPath;
 
     @PostMapping("/upload/logo")
-    @PreAuthorize("hasAuthority('company:config:update') or hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_company:info:edit','PERM_platform:company:edit')")
     public Result<String> uploadLogo(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
             return Result.fail(422, "上传文件不能为空");

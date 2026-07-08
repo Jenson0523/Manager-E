@@ -49,9 +49,9 @@ const isCompanyTenant = computed(() => {
   const tid = auth.userInfo?.tenantId
   return tid != null && tid > 0
 })
-// Only admin (super admin or company admin) can upload logo
+// 有企业信息维护权限的企业用户可上传 logo(企业管理员默认有)
 const canUploadLogo = computed(() => {
-  return isCompanyTenant.value && (auth.userInfo?.isSuperAdmin === true)
+  return isCompanyTenant.value && (auth.userInfo?.permissions ?? []).includes('company:info:edit')
 })
 const brandName = computed(() => {
   return auth.userInfo?.companyName || '腾飞企业管理'
@@ -95,14 +95,10 @@ async function onLogoSelected(e: Event) {
     // Do NOT set Content-Type manually - axios will auto-set with correct boundary
     const logoUrl = await request.post<string, string>('/v1/upload/logo', formData)
     if (logoUrl) {
-      // Update company logo via company edit API
-      const tenantId = auth.userInfo?.tenantId
-      if (tenantId) {
-        await request.put<string, unknown>(`/v1/companies/${tenantId}`, { logoUrl })
-        // Refresh user info to get new logo
-        await auth.fetchUserInfo()
-        ElMessage.success('Logo 上传成功')
-      }
+      // 企业专用端点,只改自己租户,不依赖平台权限
+      await request.put<string, unknown>('/v1/companies/my/logo', { logoUrl })
+      await auth.fetchUserInfo()
+      ElMessage.success('Logo 上传成功')
     } else {
       ElMessage.error('上传失败')
     }
@@ -223,11 +219,10 @@ function go(path: string) {
 }
 .brand-text {
   color: #fff;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  word-break: break-all;
 }
 .sidebar-menu {
   flex: 1;

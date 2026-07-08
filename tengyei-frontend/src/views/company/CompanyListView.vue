@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ArrowDown } from '@element-plus/icons-vue'
 import { companyApi } from '@/api/company'
 import type { CompanyVO, CompanyCreateDTO, CompanyUpdateDTO } from '@/types/company'
 import { strongPasswordRule, PASSWORD_TIP } from '@/utils/password'
@@ -197,6 +198,12 @@ async function resetAdminPassword(row: CompanyVO) {
   }
 }
 
+function onRowCommand(cmd: string, row: CompanyVO) {
+  if (cmd === 'toggle') toggleStatus(row)
+  else if (cmd === 'reset') resetAdminPassword(row)
+  else if (cmd === 'delete') deleteCompany(row)
+}
+
 const statusText = (s: number) => (s === 1 ? '启用' : s === 2 ? '停用' : '待激活')
 const statusType = (s: number): 'success' | 'info' | 'warning' => (s === 1 ? 'success' : s === 2 ? 'info' : 'warning')
 
@@ -233,6 +240,17 @@ onMounted(fetchList)
 
     <el-table v-loading="loading" :data="list" stripe>
       <el-table-column prop="companyNo" label="企业编号" width="130" />
+      <el-table-column label="Logo" width="70">
+        <template #default="{ row }">
+          <el-avatar
+            shape="square"
+            :size="32"
+            :src="(row as CompanyVO).logoUrl || undefined"
+          >
+            {{ ((row as CompanyVO).shortName || (row as CompanyVO).fullName || '').charAt(0) }}
+          </el-avatar>
+        </template>
+      </el-table-column>
       <el-table-column prop="fullName" label="企业全称" min-width="200" />
       <el-table-column prop="adminName" label="联系人" width="120" />
       <el-table-column prop="adminPhone" label="联系电话" width="140" />
@@ -250,14 +268,26 @@ onMounted(fetchList)
         </template>
       </el-table-column>
       <el-table-column prop="createdAt" label="创建时间" width="180" />
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row as CompanyVO)">编辑</el-button>
-          <el-button link type="primary" @click="toggleStatus(row as CompanyVO)">
-            {{ (row as CompanyVO).status === 1 ? '停用' : '启用' }}
-          </el-button>
-          <el-button link type="warning" @click="resetAdminPassword(row as CompanyVO)">重置密码</el-button>
-          <el-button link type="danger" @click="deleteCompany(row as CompanyVO)">删除</el-button>
+          <el-dropdown
+            trigger="click"
+            @command="(cmd: string) => onRowCommand(cmd, row as CompanyVO)"
+          >
+            <el-button link type="primary" class="more-btn">更多<el-icon><ArrowDown /></el-icon></el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="toggle">
+                  {{ (row as CompanyVO).status === 1 ? '停用' : '启用' }}
+                </el-dropdown-item>
+                <el-dropdown-item command="reset">重置密码</el-dropdown-item>
+                <el-dropdown-item command="delete" divided>
+                  <span style="color: var(--el-color-danger)">删除</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </template>
       </el-table-column>
     </el-table>
@@ -355,5 +385,11 @@ onMounted(fetchList)
 .pager {
   margin-top: 16px;
   justify-content: flex-end;
+}
+.more-btn {
+  margin-left: 8px;
+}
+.more-btn .el-icon {
+  margin-left: 2px;
 }
 </style>

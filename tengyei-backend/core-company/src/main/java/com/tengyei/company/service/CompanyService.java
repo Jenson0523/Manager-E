@@ -170,6 +170,14 @@ public class CompanyService {
         companyMapper.deleteById(id);
     }
 
+    /** 企业自改本公司 logo,只能改自己所在租户 */
+    public void updateMyLogo(String logoUrl) {
+        Long tenantId = com.tengyei.common.context.TenantContext.getTenantId();
+        if (tenantId == null || tenantId == 0L) throw new BusinessException(422, "仅企业用户可操作");
+        if (!StringUtils.hasText(logoUrl)) throw new BusinessException(422, "logo地址不能为空");
+        jdbcTemplate.update("UPDATE company SET logo_url = ?, updated_at = NOW() WHERE id = ?", logoUrl, tenantId);
+    }
+
     public void resetAdminPassword(Long companyId, String newPassword) {
         Company c = companyMapper.selectById(companyId);
         if (c == null) throw new BusinessException(404, "企业不存在");
