@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,14 +49,16 @@ public class UploadController {
         }
 
         try {
-            Path dir = Paths.get(uploadPath, "logo");
+            // toAbsolutePath: Windows 下 /opt/... 非绝对路径,transferTo 会被 Tomcat
+            // 按临时工作目录解析导致 FileNotFound;统一用 NIO 绝对路径写入
+            Path dir = Paths.get(uploadPath, "logo").toAbsolutePath();
             if (!Files.exists(dir)) {
                 Files.createDirectories(dir);
             }
 
             String fileName = UUID.randomUUID().toString().replace("-", "") + "." + ext;
             Path target = dir.resolve(fileName);
-            file.transferTo(target.toFile());
+            Files.copy(file.getInputStream(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
             // Return relative URL path for nginx static serving
             String url = "/uploads/logo/" + fileName;
