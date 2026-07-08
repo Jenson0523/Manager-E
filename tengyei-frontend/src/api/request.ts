@@ -99,6 +99,8 @@ request.interceptors.response.use(
     // Handle HTTP 422 (CORS preflight failure)
     if (error.response?.status === 422) {
       ElMessage.error('网络请求被拒绝，请检查网络或跨域设置')
+    } else if (error.response?.status === 413) {
+      ElMessage.error('文件过大被服务器拒绝，请压缩后重试')
     } else if (error.response) {
       ElMessage.error(`服务器错误 (${error.response.status})`)
     } else if (error.request) {
