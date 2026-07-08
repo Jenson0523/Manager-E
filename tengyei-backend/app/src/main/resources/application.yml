@@ -16,6 +16,11 @@ server:
   port: 8080
   servlet:
     context-path: /
+  tomcat:
+    # 默认 2MB,低于上面 multipart.max-request-size,会导致文件上传在参数绑定阶段
+    # 就抛 MultipartException(裸 500),永远走不到业务层自己的大小校验提示
+    max-http-form-post-size: 10MB
+    max-swallow-size: 10MB
 
 upload:
   path: /opt/tengyei/uploads
