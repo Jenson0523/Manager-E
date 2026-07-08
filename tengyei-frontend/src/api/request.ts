@@ -37,6 +37,11 @@ request.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  // 实例默认 Content-Type 是 application/json,axios 对"显式设置"的头不会
+  // 为 FormData 自动换成 multipart,会导致文件上传后端报 not a multipart request
+  if (config.data instanceof FormData) {
+    config.headers.setContentType(false)
+  }
   return config
 })
 
