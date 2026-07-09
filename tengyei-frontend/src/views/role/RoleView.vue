@@ -63,6 +63,22 @@ function toggleGroup(group: PermissionGroupVO, checked: boolean) {
   }
 }
 
+/* 复用其他角色的权限配置作为起点,可继续增删后再保存 */
+const copyFromId = ref<number | null>(null)
+const copyOptions = computed(() => roles.value.filter((r) => r.id !== activeRole.value?.id))
+async function copyFromRole(roleId: number | null) {
+  if (roleId == null || !activeRole.value) return
+  permLoading.value = true
+  try {
+    checkedIds.value = await roleApi.permissionIds(roleId)
+    const from = roles.value.find((r) => r.id === roleId)
+    ElMessage.success(`已引用「${from?.name}」的权限,可调整后点保存生效`)
+  } finally {
+    permLoading.value = false
+    copyFromId.value = null
+  }
+}
+
 async function savePermissions() {
   if (!activeRole.value) return
   saving.value = true
@@ -191,14 +207,28 @@ onMounted(() => {
       <template #header>
         <div class="pane-head">
           <span>权限配置{{ activeRole ? ` — ${activeRole.name}` : '' }}</span>
-          <el-button
-            v-if="auth.hasPermission('PERM_role:edit')"
-            type="primary"
-            size="small"
-            :disabled="noActiveRole"
-            :loading="saving"
-            @click="savePermissions"
-          >保存</el-button>
+          <div class="pane-head-actions">
+            <el-select
+              v-if="auth.hasPermission('PERM_role:edit')"
+              v-model="copyFromId"
+              placeholder="复用角色权限"
+              size="small"
+              clearable
+              :disabled="noActiveRole"
+              style="width: 150px"
+              @change="copyFromRole"
+            >
+              <el-option v-for="r in copyOptions" :key="r.id" :label="r.name" :value="r.id" />
+            </el-select>
+            <el-button
+              v-if="auth.hasPermission('PERM_role:edit')"
+              type="primary"
+              size="small"
+              :disabled="noActiveRole"
+              :loading="saving"
+              @click="savePermissions"
+            >保存</el-button>
+          </div>
         </div>
       </template>
 
@@ -273,6 +303,11 @@ onMounted(() => {
 .pane-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+.pane-head-actions {
+  display: flex;
+  gap: 8px;
   align-items: center;
 }
 .role-card {
