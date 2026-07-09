@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Edit, User, Key } from '@element-plus/icons-vue'
+import { Edit, ArrowDown } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import { roleApi } from '@/api/rbac'
 import { deptApi } from '@/api/org'
@@ -277,6 +277,12 @@ async function submitEdit() {
   }
 }
 
+function onRowCommand(cmd: string, row: UserVO) {
+  if (cmd === 'role') openRoleAssign(row)
+  else if (cmd === 'reset') resetPassword(row)
+  else if (cmd === 'toggle') toggleStatus(row)
+}
+
 function openRoleAssign(row: UserVO) {
   roleTarget.value = row
   selectedRoleIds.value = [...(row.roleIds ?? [])]
@@ -398,22 +404,28 @@ onMounted(() => {
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <div class="action-btns">
-            <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" size="small" @click="openEdit(row as UserVO)">
+          <div v-if="auth.hasPermission('PERM_user:edit')" class="action-btns">
+            <el-button link type="primary" size="small" @click="openEdit(row as UserVO)">
               <el-icon><Edit /></el-icon> 编辑
             </el-button>
-            <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="primary" size="small" @click="openRoleAssign(row as UserVO)">
-              <el-icon><User /></el-icon> 分配角色
-            </el-button>
-            <el-button v-if="auth.hasPermission('PERM_user:edit')" link type="warning" size="small" @click="resetPassword(row as UserVO)">
-              <el-icon><Key /></el-icon> 重置密码
-            </el-button>
-            <el-divider direction="vertical" />
-            <el-button v-if="auth.hasPermission('PERM_user:edit')" link :type="(row as UserVO).status === 1 ? 'danger' : 'success'" size="small" @click="toggleStatus(row as UserVO)">
-              {{ (row as UserVO).status === 1 ? '停用' : '启用' }}
-            </el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row as UserVO)">
+              <el-button link type="primary" size="small" class="more-btn">
+                更多<el-icon><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="role">分配角色</el-dropdown-item>
+                  <el-dropdown-item command="reset">重置密码</el-dropdown-item>
+                  <el-dropdown-item command="toggle" divided>
+                    <span :style="{ color: (row as UserVO).status === 1 ? 'var(--el-color-danger)' : 'var(--el-color-success)' }">
+                      {{ (row as UserVO).status === 1 ? '停用' : '启用' }}
+                    </span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </template>
       </el-table-column>
@@ -548,5 +560,9 @@ onMounted(() => {
 .action-btns .el-icon {
   font-size: 13px;
   margin-right: 2px;
+}
+.more-btn .el-icon {
+  margin-left: 2px;
+  margin-right: 0;
 }
 </style>

@@ -154,6 +154,7 @@ public class DeptService {
         d.setSortOrder(dto.getSortOrder() != null ? dto.getSortOrder() : 0);
         d.setStatus(1);
         deptMapper.insert(d);
+        bindLeaderToDept(dto.getLeaderId(), d.getId());
         return d.getId();
     }
 
@@ -165,6 +166,18 @@ public class DeptService {
         d.setLeaderId(dto.getLeaderId());
         if (dto.getSortOrder() != null) d.setSortOrder(dto.getSortOrder());
         deptMapper.updateById(d);
+        bindLeaderToDept(dto.getLeaderId(), id);
+    }
+
+    /** 选定部门负责人时,顺带把该人员挂到本部门(已挂则跳过);不影响其已有部门 */
+    private void bindLeaderToDept(Long leaderId, Long deptId) {
+        if (leaderId == null) return;
+        Long already = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM user_dept WHERE user_id = ?", Long.class, leaderId);
+        int isPrimary = (already == null || already == 0) ? 1 : 0;
+        jdbcTemplate.update(
+            "INSERT IGNORE INTO user_dept (user_id, dept_id, is_primary, created_at) VALUES (?, ?, ?, NOW())",
+            leaderId, deptId, isPrimary);
     }
 
     public void delete(Long id) {
