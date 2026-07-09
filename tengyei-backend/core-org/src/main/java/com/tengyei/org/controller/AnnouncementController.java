@@ -33,6 +33,12 @@ public class AnnouncementController {
         return Result.ok(announcementService.list());
     }
 
+    /** 详情:送达人员或本租户管理者可看(服务层校验可见性) */
+    @GetMapping("/{id}")
+    public Result<Map<String, Object>> detail(@PathVariable Long id) {
+        return Result.ok(announcementService.detail(id, TenantContext.getUserId()));
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:manage','PERM_platform:announcement:manage')")
     @Auditable(module = "公告", actionType = "CREATE", description = "保存横幅公告")

@@ -24,4 +24,5 @@ public class SysAnnouncement extends BaseEntity {
     private LocalDateTime endAt;
     private Integer status;
     private String createdBy;
+    private Long createdById;
 }

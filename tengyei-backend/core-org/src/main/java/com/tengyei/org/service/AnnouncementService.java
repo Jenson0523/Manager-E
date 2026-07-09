@@ -61,8 +61,8 @@ public class AnnouncementService {
             .filter(a -> (a.getStartAt() == null || !a.getStartAt().isAfter(now))
                       && (a.getEndAt() == null || !a.getEndAt().isBefore(now)))
             .sorted((x, y) -> y.getId().compareTo(x.getId()))
-            // 发布的公告点击统一进通知管理;系统计算横幅在下方各自带跳转
-            .forEach(a -> banners.add(banner(a.getId(), a.getTitle(), a.getContent(), a.getLevel(), "/announcements")));
+            // 发布的公告前端按 id 弹详情;系统计算横幅在下方各自带跳转
+            .forEach(a -> banners.add(banner(a.getId(), a.getTitle(), a.getContent(), a.getLevel(), null)));
 
         // 3) 系统计算:待办审批(有超时则升级为紧急)
         Map<String, Object> todo = jdbcTemplate.queryForList(
@@ -113,6 +113,53 @@ public class AnnouncementService {
             .anyMatch(id -> mine.contains(Long.valueOf(id.trim())));
     }
 
+    /** 通知详情:送达人员或本租户管理者可看,含发布人姓名/角色/部门 */
+    public Map<String, Object> detail(Long id, Long userId) {
+        SysAnnouncement a = announcementMapper.selectById(id);
+        if (a == null) throw new BusinessException(404, "通知不存在");
+        Long tenantId = TenantContext.getTenantId();
+
+        boolean manager = a.getTenantId().equals(tenantId) && hasManageAuthority();
+        boolean recipient =
+            (a.getTenantId().equals(tenantId) && "SELF".equals(a.getTargetScope()) && matchesAudience(a, userId))
+            || (tenantId != null && tenantId != 0L && a.getTenantId() == 0L
+                && ("ALL_COMPANIES".equals(a.getTargetScope())
+                    || ("COMPANIES".equals(a.getTargetScope()) && a.getTargetIds() != null
+                        && Arrays.asList(a.getTargetIds().split(",")).contains(String.valueOf(tenantId)))));
+        if (!manager && !recipient) throw new BusinessException(403, "无权查看该通知");
+
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", a.getId());
+        m.put("title", a.getTitle());
+        m.put("content", a.getContent());
+        m.put("level", a.getLevel());
+        m.put("source", a.getTenantId() == 0L ? "平台" : "本公司");
+        m.put("createdAt", a.getCreatedAt());
+        m.put("startAt", a.getStartAt());
+        m.put("endAt", a.getEndAt());
+        m.put("publisherName", a.getCreatedBy());
+        if (a.getCreatedById() != null) {
+            m.put("publisherRoles", jdbcTemplate.queryForList(
+                "SELECT r.name FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
+                String.class, a.getCreatedById()));
+            m.put("publisherDepts", jdbcTemplate.queryForList(
+                "SELECT d.name FROM dept d JOIN user_dept ud ON ud.dept_id = d.id " +
+                "WHERE ud.user_id = ? AND d.is_deleted = 0",
+                String.class, a.getCreatedById()));
+        }
+        return m;
+    }
+
+    private boolean hasManageAuthority() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream()
+            .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+            .anyMatch(x -> "PERM_*".equals(x)
+                || "PERM_announcement:manage".equals(x)
+                || "PERM_platform:announcement:manage".equals(x));
+    }
+
     /** 管理列表:本租户发布的全部公告 */
     public List<SysAnnouncement> list() {
         return announcementMapper.selectList(new LambdaQueryWrapper<SysAnnouncement>()
@@ -153,6 +200,7 @@ public class AnnouncementService {
             a = new SysAnnouncement();
             a.setTenantId(tenantId);
             a.setCreatedBy(operatorName);
+            a.setCreatedById(TenantContext.getUserId());
         }
         a.setTitle(dto.getTitle());
         a.setContent(dto.getContent());

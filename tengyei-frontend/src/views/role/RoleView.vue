@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type Checkb
 import { roleApi, permissionApi } from '@/api/rbac'
 import { useAuthStore } from '@/stores/auth'
 import type { RoleVO, RoleSaveDTO, PermissionGroupVO } from '@/types/rbac'
+import { moduleLabel } from '@/utils/moduleLabels'
 
 const auth = useAuthStore()
 
@@ -242,7 +243,7 @@ onMounted(() => {
               :indeterminate="groupIndeterminate(group)"
               @change="(v: CheckboxValueType) => toggleGroup(group, v as boolean)"
             >
-              <strong>{{ group.module }}</strong>
+              <strong>{{ moduleLabel(group.module) }}</strong>
             </el-checkbox>
           </div>
           <el-checkbox-group v-model="checkedIds" class="perm-items">

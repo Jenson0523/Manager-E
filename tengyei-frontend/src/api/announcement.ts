@@ -39,9 +39,24 @@ export interface AnnouncementSaveDTO {
   status?: number
 }
 
+export interface AnnouncementDetailVO {
+  id: number
+  title: string
+  content?: string
+  level: string
+  source: string
+  publisherName?: string
+  publisherRoles?: string[]
+  publisherDepts?: string[]
+  createdAt?: string
+  startAt?: string
+  endAt?: string
+}
+
 export const announcementApi = {
   active: () => request.get<never, BannerVO[]>('/v1/announcements/active'),
   list: () => request.get<never, AnnouncementVO[]>('/v1/announcements'),
+  detail: (id: number) => request.get<never, AnnouncementDetailVO>(`/v1/announcements/${id}`),
   save: (data: AnnouncementSaveDTO) =>
     request.post<never, { id: number }>('/v1/announcements', data),
   remove: (id: number) => request.delete<never, void>(`/v1/announcements/${id}`),

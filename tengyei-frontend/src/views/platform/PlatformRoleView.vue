@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, type CheckboxValueType, type FormInstance, typ
 import { platformRoleApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
 import type { PermissionGroupVO, PlatformRoleDTO, PlatformRoleVO } from '@/types/platform'
+import { moduleLabel } from '@/utils/moduleLabels'
 
 const auth = useAuthStore()
 
@@ -280,7 +281,7 @@ onMounted(() => {
               :disabled="!canEditActiveRole"
               @change="(v: CheckboxValueType) => toggleGroup(group, v as boolean)"
             >
-              <strong>{{ group.module }}</strong>
+              <strong>{{ moduleLabel(group.module) }}</strong>
             </el-checkbox>
           </div>
           <el-checkbox-group v-model="checkedIds" class="perm-items" :disabled="!canEditActiveRole">

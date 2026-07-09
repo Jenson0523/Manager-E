@@ -84,6 +84,28 @@ class AnnouncementTest {
                 .header("Authorization", "Bearer " + platformToken))
                 .andExpect(jsonPath("$.data[*].title", not(hasItem("公司内部通知"))));
 
+        // 详情:发布的公告(公司自发)带发布人姓名和角色;定向他司的详情对本公司 403
+        String selfListJson = mockMvc.perform(get("/api/v1/announcements")
+                .header("Authorization", "Bearer " + companyToken))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        long selfId = objectMapper.readTree(selfListJson).get("data").get(0).get("id").asLong();
+        mockMvc.perform(get("/api/v1/announcements/" + selfId)
+                .header("Authorization", "Bearer " + companyToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.publisherName").isNotEmpty())
+                .andExpect(jsonPath("$.data.publisherRoles").isArray())
+                .andExpect(jsonPath("$.data.source").value("本公司"));
+        String platListJson = mockMvc.perform(get("/api/v1/announcements")
+                .header("Authorization", "Bearer " + platformToken))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        long otherId = -1;
+        for (var node : objectMapper.readTree(platListJson).get("data")) {
+            if ("COMPANIES".equals(node.get("targetScope").asText())) otherId = node.get("id").asLong();
+        }
+        mockMvc.perform(get("/api/v1/announcements/" + otherId)
+                .header("Authorization", "Bearer " + companyToken))
+                .andExpect(jsonPath("$.code").value(403));
+
         // 系统计算横幅:造一条待办审批 -> /active 出现待办提醒(带跳转链接)
         String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
             "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() + "}]}")

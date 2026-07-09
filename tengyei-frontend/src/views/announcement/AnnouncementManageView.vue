@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { announcementApi, type AnnouncementVO } from '@/api/announcement'
+import AnnouncementDetailDialog from '@/components/AnnouncementDetailDialog.vue'
 import { companyApi } from '@/api/company'
 import { deptApi } from '@/api/org'
 import { roleApi } from '@/api/rbac'
@@ -142,6 +143,8 @@ async function toggle(row: AnnouncementVO) {
   fetchList()
 }
 
+const detailRef = ref<InstanceType<typeof AnnouncementDetailDialog>>()
+
 onMounted(fetchList)
 </script>
 
@@ -152,7 +155,13 @@ onMounted(fetchList)
     </div>
 
     <el-table v-loading="loading" :data="list" stripe>
-      <el-table-column prop="title" label="标题" min-width="180" />
+      <el-table-column label="标题" min-width="180">
+        <template #default="{ row }">
+          <el-link type="primary" :underline="false" @click="detailRef?.open((row as AnnouncementVO).id)">
+            {{ (row as AnnouncementVO).title }}
+          </el-link>
+        </template>
+      </el-table-column>
       <el-table-column label="级别" width="90">
         <template #default="{ row }">
           <el-tag :type="LEVEL_TAG[(row as AnnouncementVO).level] ?? 'info'" size="small">
@@ -191,6 +200,8 @@ onMounted(fetchList)
         </template>
       </el-table-column>
     </el-table>
+
+    <AnnouncementDetailDialog ref="detailRef" />
 
     <el-dialog v-model="dialog" :title="form.id ? '编辑通知' : '发布通知'" width="520px" :fullscreen="isMobile">
       <el-form label-width="90px">

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { announcementApi, type BannerVO } from '@/api/announcement'
+import AnnouncementDetailDialog from '@/components/AnnouncementDetailDialog.vue'
 import SuperDashboard from './dashboard/SuperDashboard.vue'
 import CompanyDashboard from './dashboard/CompanyDashboard.vue'
 
@@ -36,8 +37,11 @@ function closeBanner(b: BannerVO) {
   sessionStorage.setItem(CLOSED_KEY, JSON.stringify([...closed]))
   banners.value = [...banners.value]
 }
+const detailRef = ref<InstanceType<typeof AnnouncementDetailDialog>>()
 function onBannerClick(b: BannerVO) {
-  if (b.linkUrl) router.push(b.linkUrl)
+  // 发布的通知(有id)弹详情;系统计算横幅走各自跳转
+  if (b.id != null) detailRef.value?.open(b.id)
+  else if (b.linkUrl) router.push(b.linkUrl)
 }
 function alertType(level: string) {
   return level === 'URGENT' ? 'error' : level === 'WARN' ? 'warning' : 'info'
@@ -58,7 +62,8 @@ function popUrgent() {
 }
 function goUrgent(b: BannerVO) {
   urgentDialog.value = false
-  if (b.linkUrl) router.push(b.linkUrl)
+  if (b.id != null) detailRef.value?.open(b.id)
+  else if (b.linkUrl) router.push(b.linkUrl)
 }
 
 onMounted(async () => {
@@ -86,14 +91,14 @@ onMounted(async () => {
         <el-alert
           :type="alertType(b.level)"
           :closable="true"
-          :class="{ clickable: !!b.linkUrl }"
+          :class="{ clickable: b.id != null || !!b.linkUrl }"
           @close="closeBanner(b)"
           @click="onBannerClick(b)"
         >
           <template #title>
             <span>{{ b.title }}</span>
             <span v-if="b.content" class="banner-content">{{ b.content }}</span>
-            <span v-if="b.linkUrl" class="banner-go">点击查看 ›</span>
+            <span v-if="b.id != null || b.linkUrl" class="banner-go">点击查看 ›</span>
           </template>
         </el-alert>
       </el-carousel-item>
@@ -104,17 +109,19 @@ onMounted(async () => {
         v-for="b in urgentList"
         :key="bannerKey(b)"
         class="urgent-item"
-        :class="{ clickable: !!b.linkUrl }"
+        :class="{ clickable: b.id != null || !!b.linkUrl }"
         @click="goUrgent(b)"
       >
         <div class="urgent-title">{{ b.title }}</div>
         <div v-if="b.content" class="urgent-content">{{ b.content }}</div>
-        <div v-if="b.linkUrl" class="banner-go">点击查看 ›</div>
+        <div v-if="b.id != null || b.linkUrl" class="banner-go">点击查看 ›</div>
       </div>
       <template #footer>
         <el-button type="primary" @click="urgentDialog = false">知道了</el-button>
       </template>
     </el-dialog>
+
+    <AnnouncementDetailDialog ref="detailRef" />
 
     <SuperDashboard v-if="isPlatform" />
     <CompanyDashboard v-else />
