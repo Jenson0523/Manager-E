@@ -119,7 +119,7 @@ public class AnnouncementService {
         if (a == null) throw new BusinessException(404, "通知不存在");
         Long tenantId = TenantContext.getTenantId();
 
-        boolean manager = a.getTenantId().equals(tenantId) && hasManageAuthority();
+        boolean manager = a.getTenantId().equals(tenantId) && hasViewAuthority();
         boolean recipient =
             (a.getTenantId().equals(tenantId) && "SELF".equals(a.getTargetScope()) && matchesAudience(a, userId))
             || (tenantId != null && tenantId != 0L && a.getTenantId() == 0L
@@ -138,6 +138,8 @@ public class AnnouncementService {
         m.put("startAt", a.getStartAt());
         m.put("endAt", a.getEndAt());
         m.put("publisherName", a.getCreatedBy());
+        // 区分"历史数据未追踪发布人"与"确实无角色/部门",前端据此提示不同文案
+        m.put("publisherTracked", a.getCreatedById() != null);
         if (a.getCreatedById() != null) {
             m.put("publisherRoles", jdbcTemplate.queryForList(
                 "SELECT r.name FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
@@ -150,14 +152,19 @@ public class AnnouncementService {
         return m;
     }
 
-    private boolean hasManageAuthority() {
+    /** 列表/详情可见性:查看、发布编辑、停用删除 三档权限任一即可 */
+    private boolean hasViewAuthority() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return false;
         return auth.getAuthorities().stream()
             .map(org.springframework.security.core.GrantedAuthority::getAuthority)
             .anyMatch(x -> "PERM_*".equals(x)
+                || "PERM_announcement:view".equals(x)
                 || "PERM_announcement:manage".equals(x)
-                || "PERM_platform:announcement:manage".equals(x));
+                || "PERM_announcement:disable".equals(x)
+                || "PERM_platform:announcement:view".equals(x)
+                || "PERM_platform:announcement:manage".equals(x)
+                || "PERM_platform:announcement:disable".equals(x));
     }
 
     /** 管理列表:本租户发布的全部公告 */
@@ -218,6 +225,20 @@ public class AnnouncementService {
         if (a.getId() != null) announcementMapper.updateById(a);
         else announcementMapper.insert(a);
         return a.getId();
+    }
+
+    public void setStatus(Long id, Integer status) {
+        SysAnnouncement a = announcementMapper.selectById(id);
+        if (a == null || !a.getTenantId().equals(TenantContext.getTenantId())) {
+            throw new BusinessException(404, "公告不存在");
+        }
+        if (status == null || !List.of(0, 1).contains(status)) {
+            throw new BusinessException(422, "状态无效");
+        }
+        SysAnnouncement update = new SysAnnouncement();
+        update.setId(id);
+        update.setStatus(status);
+        announcementMapper.updateById(update);
     }
 
     public void delete(Long id) {

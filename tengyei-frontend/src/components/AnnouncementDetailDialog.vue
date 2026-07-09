@@ -38,11 +38,16 @@ defineExpose({ open })
         <el-descriptions :column="1" size="small" border class="detail-meta">
           <el-descriptions-item label="发布方">{{ data.source }}</el-descriptions-item>
           <el-descriptions-item label="发布人">{{ data.publisherName || '—' }}</el-descriptions-item>
-          <el-descriptions-item v-if="data.publisherRoles?.length" label="角色">
-            {{ data.publisherRoles.join('、') }}
-          </el-descriptions-item>
-          <el-descriptions-item v-if="data.publisherDepts?.length" label="部门">
-            {{ data.publisherDepts.join('、') }}
+          <template v-if="data.publisherTracked">
+            <el-descriptions-item label="角色">
+              {{ data.publisherRoles?.length ? data.publisherRoles.join('、') : '无' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="部门">
+              {{ data.publisherDepts?.length ? data.publisherDepts.join('、') : '无' }}
+            </el-descriptions-item>
+          </template>
+          <el-descriptions-item v-else label="角色/部门">
+            历史通知,未记录发布人角色和部门
           </el-descriptions-item>
           <el-descriptions-item label="发布时间">{{ data.createdAt?.replace('T', ' ') }}</el-descriptions-item>
           <el-descriptions-item v-if="data.startAt || data.endAt" label="展示时间">

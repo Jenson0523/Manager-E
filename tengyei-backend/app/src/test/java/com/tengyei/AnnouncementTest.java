@@ -93,7 +93,7 @@ class AnnouncementTest {
                 .header("Authorization", "Bearer " + companyToken))
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.publisherName").isNotEmpty())
-                .andExpect(jsonPath("$.data.publisherRoles").isArray())
+                .andExpect(jsonPath("$.data.publisherRoles", hasItem("企业管理员")))
                 .andExpect(jsonPath("$.data.source").value("本公司"));
         String platListJson = mockMvc.perform(get("/api/v1/announcements")
                 .header("Authorization", "Bearer " + platformToken))
@@ -124,5 +124,72 @@ class AnnouncementTest {
         mockMvc.perform(get("/api/v1/announcements/active")
                 .header("Authorization", "Bearer " + companyToken))
                 .andExpect(jsonPath("$.data[*].linkUrl", hasItem("/company/approval")));
+    }
+
+    @Test
+    void viewOnlyUser_canListAndViewDetail_butCannotManageOrDisable() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String adminToken = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        mockMvc.perform(post("/api/v1/announcements")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"给全员的通知\",\"level\":\"INFO\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        String listJson = mockMvc.perform(get("/api/v1/announcements")
+                .header("Authorization", "Bearer " + adminToken))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        long annId = objectMapper.readTree(listJson).get("data").get(0).get("id").asLong();
+
+        // 仅授 view 权限的普通员工(测试租户全新,角色码不会冲突)
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, is_deleted, created_at, updated_at) " +
+            "VALUES (?, '普通员工', 'viewer_role', 'self', 0, 1, 0, NOW(), NOW())", seeded.tenantId());
+        long roleId = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id = ? AND code = 'viewer_role'", Long.class, seeded.tenantId());
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id, permission_id, created_at) " +
+            "SELECT ?, id, NOW() FROM permission WHERE code = 'announcement:view'", roleId);
+        jdbcTemplate.update(
+            "INSERT INTO `user` (tenant_id, user_no, username, password, real_name, phone, " +
+            "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
+            "VALUES (?, ?, ?, ?, '普通员工', '13900000002', 0, 1, 0, 0, NOW(), NOW())",
+            seeded.tenantId(), "U" + seeded.tenantId() + "-0002", "viewer_" + seeded.tenantId(),
+            OrgTestSupport.ADMIN_PWD_HASH);
+        Long viewerUserId = jdbcTemplate.queryForObject(
+            "SELECT id FROM `user` WHERE username = ?", Long.class, "viewer_" + seeded.tenantId());
+        jdbcTemplate.update("INSERT INTO user_role (user_id, role_id, created_at) VALUES (?, ?, NOW())",
+            viewerUserId, roleId);
+        String viewerToken = OrgTestSupport.login(mockMvc, objectMapper, "viewer_" + seeded.tenantId());
+
+        // 能看列表 + 能看详情(历史记录)
+        mockMvc.perform(get("/api/v1/announcements")
+                .header("Authorization", "Bearer " + viewerToken))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/v1/announcements/" + annId)
+                .header("Authorization", "Bearer " + viewerToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.title").value("给全员的通知"));
+
+        // 不能发布、不能停用、不能删除
+        mockMvc.perform(post("/api/v1/announcements")
+                .header("Authorization", "Bearer " + viewerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"越权发布\",\"level\":\"INFO\"}"))
+                .andExpect(jsonPath("$.code").value(403));
+        mockMvc.perform(put("/api/v1/announcements/" + annId + "/status")
+                .header("Authorization", "Bearer " + viewerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":0}"))
+                .andExpect(jsonPath("$.code").value(403));
+        mockMvc.perform(delete("/api/v1/announcements/" + annId)
+                .header("Authorization", "Bearer " + viewerToken))
+                .andExpect(jsonPath("$.code").value(403));
+
+        // 管理员(拥有 disable 权限)可以停用
+        mockMvc.perform(put("/api/v1/announcements/" + annId + "/status")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":0}"))
+                .andExpect(jsonPath("$.code").value(0));
     }
 }

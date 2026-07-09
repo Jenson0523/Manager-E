@@ -28,7 +28,8 @@ public class AnnouncementController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:manage','PERM_platform:announcement:manage')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:view','PERM_announcement:manage','PERM_announcement:disable'," +
+        "'PERM_platform:announcement:view','PERM_platform:announcement:manage','PERM_platform:announcement:disable')")
     public Result<List<SysAnnouncement>> list() {
         return Result.ok(announcementService.list());
     }
@@ -47,8 +48,16 @@ public class AnnouncementController {
             announcementService.save(dto, TenantContext.getUserName())));
     }
 
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:disable','PERM_platform:announcement:disable')")
+    @Auditable(module = "公告", actionType = "UPDATE", description = "停用/启用横幅公告")
+    public Result<Void> setStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
+        announcementService.setStatus(id, body.get("status"));
+        return Result.ok();
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:manage','PERM_platform:announcement:manage')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:disable','PERM_platform:announcement:disable')")
     @Auditable(module = "公告", actionType = "DELETE", description = "删除横幅公告")
     public Result<Void> delete(@PathVariable Long id) {
         announcementService.delete(id);

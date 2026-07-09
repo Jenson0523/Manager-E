@@ -14,6 +14,10 @@ import { useIsMobile } from '@/utils/responsive'
 const auth = useAuthStore()
 const isMobile = useIsMobile()
 const isPlatform = computed(() => auth.userInfo?.tenantId === 0)
+const canManage = computed(() =>
+  auth.hasPermission(isPlatform.value ? 'PERM_platform:announcement:manage' : 'PERM_announcement:manage'))
+const canDisable = computed(() =>
+  auth.hasPermission(isPlatform.value ? 'PERM_platform:announcement:disable' : 'PERM_announcement:disable'))
 
 const loading = ref(false)
 const list = ref<AnnouncementVO[]>([])
@@ -126,19 +130,7 @@ async function remove(row: AnnouncementVO) {
   fetchList()
 }
 async function toggle(row: AnnouncementVO) {
-  await announcementApi.save({
-    id: row.id,
-    title: row.title,
-    content: row.content,
-    level: row.level,
-    targetScope: row.targetScope,
-    targetIds: row.targetIds ? row.targetIds.split(',').map(Number) : undefined,
-    audienceType: row.audienceType ?? 'ALL',
-    audienceIds: row.audienceIds ? row.audienceIds.split(',').map(Number) : undefined,
-    startAt: row.startAt,
-    endAt: row.endAt,
-    status: row.status === 1 ? 0 : 1,
-  })
+  await announcementApi.setStatus(row.id, row.status === 1 ? 0 : 1)
   ElMessage.success('已更新')
   fetchList()
 }
@@ -151,7 +143,7 @@ onMounted(fetchList)
 <template>
   <div class="page">
     <div class="toolbar">
-      <el-button type="primary" @click="openCreate">发布通知</el-button>
+      <el-button v-if="canManage" type="primary" @click="openCreate">发布通知</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" stripe>
@@ -190,13 +182,13 @@ onMounted(fetchList)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column v-if="canManage || canDisable" label="操作" width="180" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row as AnnouncementVO)">编辑</el-button>
-          <el-button link type="primary" @click="toggle(row as AnnouncementVO)">
+          <el-button v-if="canManage" link type="primary" @click="openEdit(row as AnnouncementVO)">编辑</el-button>
+          <el-button v-if="canDisable" link type="primary" @click="toggle(row as AnnouncementVO)">
             {{ (row as AnnouncementVO).status === 1 ? '停用' : '启用' }}
           </el-button>
-          <el-button link type="danger" @click="remove(row as AnnouncementVO)">删除</el-button>
+          <el-button v-if="canDisable" link type="danger" @click="remove(row as AnnouncementVO)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>

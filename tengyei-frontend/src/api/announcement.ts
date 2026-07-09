@@ -46,6 +46,7 @@ export interface AnnouncementDetailVO {
   level: string
   source: string
   publisherName?: string
+  publisherTracked?: boolean
   publisherRoles?: string[]
   publisherDepts?: string[]
   createdAt?: string
@@ -59,5 +60,7 @@ export const announcementApi = {
   detail: (id: number) => request.get<never, AnnouncementDetailVO>(`/v1/announcements/${id}`),
   save: (data: AnnouncementSaveDTO) =>
     request.post<never, { id: number }>('/v1/announcements', data),
+  setStatus: (id: number, status: number) =>
+    request.put<never, void>(`/v1/announcements/${id}/status`, { status }),
   remove: (id: number) => request.delete<never, void>(`/v1/announcements/${id}`),
 }

@@ -89,7 +89,8 @@ public class UserInfoController {
         if (all || has(permissions, "platform:audit:view"))     routes.add(route("/admin/audit-logs", "操作日志"));
         if (all || has(permissions, "platform:config:view"))    routes.add(route("/admin/system-config", "系统设置"));
         if (all || has(permissions, "platform:module:view"))    routes.add(route("/admin/modules", "模块管理"));
-        if (all || has(permissions, "platform:announcement:manage")) routes.add(route("/announcements", "通知管理"));
+        if (all || hasAny(permissions, "platform:announcement:view", "platform:announcement:manage", "platform:announcement:disable"))
+            routes.add(route("/announcements", "通知管理"));
         // Business modules (e.g. approval) are registered dynamically via module_registry
         return routes;
     }
@@ -105,7 +106,8 @@ public class UserInfoController {
         if (hasAny(permissions, "user:view")) routes.add(route("/company/users", "人员管理"));
         if (hasAny(permissions, "role:view")) routes.add(route("/company/roles", "角色与权限"));
         if (hasAny(permissions, "log:view", "*")) routes.add(route("/admin/audit-logs", "操作日志"));
-        if (hasAny(permissions, "announcement:manage")) routes.add(route("/announcements", "通知管理"));
+        if (hasAny(permissions, "announcement:view", "announcement:manage", "announcement:disable"))
+            routes.add(route("/announcements", "通知管理"));
         // Business modules (e.g. approval) are registered dynamically via module_registry
         return routes;
     }
