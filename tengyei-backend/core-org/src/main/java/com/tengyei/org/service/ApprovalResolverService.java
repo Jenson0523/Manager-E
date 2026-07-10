@@ -17,7 +17,8 @@ public class ApprovalResolverService {
     public record Approver(Long id, String name) {}
 
     /**
-     * 解析节点全部审批人。空列表 = SELF_APPROVE（自动通过）。
+     * 解析节点全部审批人。空列表 = 无可用审批人(SELF_APPROVE 或解析失败),
+     * 由引擎决定跳过或拦截——中途解析失败不能把审批人的"通过"操作打断。
      * ROLE 返回角色下所有有效用户（配合 ALL 会签 / ANYONE 或签）；其余类型单人。
      */
     public List<Approver> resolveAll(String approverType, Long targetUserId, Long targetRoleId, Long applicantId) {
@@ -28,7 +29,6 @@ public class ApprovalResolverService {
                 "SELECT u.id, u.real_name FROM user_role ur JOIN `user` u ON u.id = ur.user_id " +
                 "WHERE ur.role_id = ? AND u.is_deleted = 0 AND u.status = 1 ORDER BY u.id",
                 (rs, i) -> new Approver(rs.getLong("id"), rs.getString("real_name")), targetRoleId);
-            if (members.isEmpty()) throw new BusinessException(422, "角色下无可用审批人");
             return members.stream().map(this::redirectByDelegate).toList();
         }
 
@@ -41,11 +41,11 @@ public class ApprovalResolverService {
             case "SPECIFIC_USER" -> targetUserId;
             default -> throw new BusinessException(422, "未知审批人类型：" + approverType);
         };
-        if (approverId == null) throw new BusinessException(422, "无法解析审批人（" + approverType + "）");
+        if (approverId == null) return List.of();
 
         List<String> names = jdbcTemplate.queryForList(
             "SELECT real_name FROM `user` WHERE id = ? AND is_deleted = 0", String.class, approverId);
-        if (names.isEmpty()) throw new BusinessException(422, "审批人不存在或已离职");
+        if (names.isEmpty()) return List.of();
         return List.of(redirectByDelegate(new Approver(approverId, names.get(0))));
     }
 

@@ -146,6 +146,39 @@ async function openResubmit() {
 const detailDialog = ref(false)
 const detail = ref<ApprovalInstanceVO | null>(null)
 const actComment = ref('')
+
+/* 表单数据结构化展示:根据 fieldsJson 解析为 {label, value} 数组 */
+const detailFormFields = computed(() => {
+  if (!detail.value?.formData) return []
+  let data: Record<string, unknown> = {}
+  try { data = JSON.parse(detail.value.formData) } catch { return [] }
+  // 优先用流程定义的字段配置(有 label 映射)
+  if (detail.value.fieldsJson) {
+    try {
+      const fields = JSON.parse(detail.value.fieldsJson) as FormField[]
+      if (Array.isArray(fields) && fields.length) {
+        return fields.map(f => ({
+          label: f.label,
+          value: formatFieldValue(data[f.key], f.type),
+        })).filter(f => f.value !== '' && f.value !== undefined && f.value !== null)
+      }
+    } catch { /* fall through to raw */ }
+  }
+  // 降级:无字段定义时直接按 key->value 展示
+  return Object.entries(data).map(([k, v]) => ({ label: k, value: String(v) }))
+})
+function formatFieldValue(val: unknown, type: string): string {
+  if (val === null || val === undefined) return ''
+  if (type === 'date') return String(val)
+  if (type === 'number') return String(val)
+  return String(val)
+}
+
+/* 节点状态标签映射 */
+function nodeStatusLabel(status: string): string {
+  return { APPROVED: '已通过', REJECTED: '已驳回', APPROVING: '审批中', WAITING: '等待中', CANCELED: '已取消' }[status] ?? status
+}
+
 async function openDetail(id: number) {
   detail.value = await approvalApi.detail(id)
   actComment.value = ''
@@ -262,6 +295,12 @@ const REJECT_POLICY_SHORT: Record<string, string> = {
 function approverTypeLabel(t: string) {
   return APPROVER_TYPES.find((x) => x.value === t)?.label ?? t
 }
+function approverTypeIcon(t: string) {
+  return APPROVER_TYPES.find((x) => x.value === t)?.icon ?? '📋'
+}
+function approverTypeColor(t: string) {
+  return APPROVER_TYPES.find((x) => x.value === t)?.color ?? '#909399'
+}
 function nodeTargetName(n: NodeDraft) {
   if (n.approverType === 'SPECIFIC_USER') return userOptions.value.find((u) => u.id === n.targetUserId)?.name ?? ''
   if (n.approverType === 'ROLE') return roleOptions.value.find((r) => r.id === n.targetRoleId)?.name ?? ''
@@ -287,11 +326,11 @@ function removeNodeAt(i: number) {
   flowNodes.value.splice(i, 1)
 }
 const APPROVER_TYPES = [
-  { value: 'LEADER', label: '直属上级' },
-  { value: 'DEPT_LEADER', label: '部门负责人' },
-  { value: 'SPECIFIC_USER', label: '指定人员' },
-  { value: 'ROLE', label: '指定角色' },
-  { value: 'SELF_APPROVE', label: '自动通过(备案)' },
+  { value: 'LEADER', label: '直属上级', icon: '👑', color: '#409eff' },
+  { value: 'DEPT_LEADER', label: '部门负责人', icon: '🏷️', color: '#67c23a' },
+  { value: 'SPECIFIC_USER', label: '指定人员', icon: '👤', color: '#e6a23c' },
+  { value: 'ROLE', label: '指定角色', icon: '🔑', color: '#f56c6c' },
+  { value: 'SELF_APPROVE', label: '自动通过', icon: '⚡', color: '#909399' },
 ]
 interface FieldDraft {
   key: string
@@ -316,6 +355,14 @@ const roleOptions = ref<{ id: number; name: string }[]>([])
 
 function blankNode(): NodeDraft {
   return { name: '', approverType: 'LEADER', resolveMode: 'FIRST', condition: '', rejectPolicy: 'TERMINATE' }
+}
+function flowNodeSummary(f: ApprovalFlowVO): string {
+  try {
+    const parsed = JSON.parse(f.configJson) as { nodes: { name: string }[] }
+    return (parsed.nodes ?? []).map(n => n.name).join(' → ')
+  } catch {
+    return ''
+  }
 }
 async function loadFlowRefs() {
   const isPlatform = auth.userInfo?.tenantId === 0
@@ -541,17 +588,22 @@ onMounted(() => loadTab('todo'))
           <el-button type="primary" size="small" @click="openFlowCreate">新建流程</el-button>
         </div>
         <el-table v-loading="loading" :data="flowList" stripe>
-          <el-table-column prop="formType" label="表单类型" width="120" />
-          <el-table-column prop="formName" label="名称" width="160" />
-          <el-table-column prop="version" label="版本" width="80" />
-          <el-table-column label="状态" width="90">
+          <el-table-column prop="formType" label="表单类型" width="100" />
+          <el-table-column prop="formName" label="名称" width="120" />
+          <el-table-column label="审批节点" min-width="200">
             <template #default="{ row }">
-              <el-tag :type="(row as ApprovalFlowVO).status === 1 ? 'success' : 'info'">
+              <span class="flow-summary">{{ flowNodeSummary(row as ApprovalFlowVO) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="version" label="版本" width="70" />
+          <el-table-column label="状态" width="80">
+            <template #default="{ row }">
+              <el-tag :type="(row as ApprovalFlowVO).status === 1 ? 'success' : 'info'" size="small">
                 {{ (row as ApprovalFlowVO).status === 1 ? '启用' : '停用' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="160">
+          <el-table-column label="操作" width="140">
             <template #default="{ row }">
               <el-button link type="primary" @click="openFlowEdit(row as ApprovalFlowVO)">编辑</el-button>
               <el-button link type="primary" @click="toggleFlow(row as ApprovalFlowVO)">
@@ -593,19 +645,48 @@ onMounted(() => loadTab('todo'))
     </el-dialog>
 
     <!-- 审批详情/处理 -->
-    <el-dialog v-model="detailDialog" :title="`审批详情 ${detail?.instanceNo ?? ''}`" width="560px" :fullscreen="isMobile">
+    <el-dialog v-model="detailDialog" :title="`审批详情 ${detail?.instanceNo ?? ''}`" width="620px" :fullscreen="isMobile">
       <template v-if="detail">
-        <p>申请人：{{ detail.applicantName }}　申请时间：{{ detail.createdAt }}</p>
-        <p style="font-weight: 600; margin-top: 12px">表单数据</p>
-        <pre class="form-data">{{ detail.formData }}</pre>
-        <p style="font-weight: 600; margin-top: 12px">审批记录</p>
-        <ul class="node-list">
-          <li v-for="n in detail.nodes" :key="n.id">
-            {{ n.nodeName }} — {{ n.approverName ?? '（自动）' }}
-            <el-tag size="small" :type="statusTag(n.status)">{{ n.status }}</el-tag>
-            <span v-if="n.comment"> ：{{ n.comment }}</span>
-          </li>
-        </ul>
+        <!-- 警告提示(如节点无可用审批人) -->
+        <el-alert v-if="detail.warning" :title="detail.warning" type="error" show-icon :closable="false" style="margin-bottom: 12px" />
+        <!-- 基本信息 -->
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="申请人">{{ detail.applicantName }}</el-descriptions-item>
+          <el-descriptions-item label="申请时间">{{ detail.createdAt }}</el-descriptions-item>
+          <el-descriptions-item label="表单类型">{{ detail.formName || detail.formType }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="statusTag(detail.status)" size="small">{{ statusLabel(detail.status) }}</el-tag>
+          </el-descriptions-item>
+        </el-descriptions>
+        <!-- 表单数据(结构化展示) -->
+        <p style="font-weight: 600; margin-top: 16px; margin-bottom: 8px">表单数据</p>
+        <el-descriptions v-if="detailFormFields.length" :column="1" border size="small">
+          <el-descriptions-item v-for="f in detailFormFields" :key="f.label" :label="f.label">
+            {{ f.value }}
+          </el-descriptions-item>
+        </el-descriptions>
+        <pre v-else class="form-data">{{ detail.formData }}</pre>
+        <!-- 审批进度时间线 -->
+        <p style="font-weight: 600; margin-top: 16px; margin-bottom: 8px">审批进度</p>
+        <el-timeline>
+          <el-timeline-item
+            v-for="n in detail.nodes" :key="n.id"
+            :type="n.status === 'APPROVED' ? 'success' : n.status === 'REJECTED' ? 'danger' : n.status === 'APPROVING' ? 'warning' : 'info'"
+            :timestamp="n.actionAt || ''"
+            placement="top"
+          >
+            <div class="timeline-node">
+              <span class="timeline-node-name">{{ n.nodeName }}</span>
+              <el-tag size="small" :type="statusTag(n.status)">{{ nodeStatusLabel(n.status) }}</el-tag>
+            </div>
+            <div class="timeline-node-info">
+              <span v-if="n.approverName">审批人: {{ n.approverName }}</span>
+              <span v-else-if="n.result === 'AUTO'">系统自动通过</span>
+              <span v-else>待分配审批人</span>
+            </div>
+            <div v-if="n.comment" class="timeline-node-comment">{{ n.comment }}</div>
+          </el-timeline-item>
+        </el-timeline>
         <template v-if="detail.status === 'PENDING'">
           <el-input v-model="actComment" type="textarea" :rows="2" placeholder="审批意见（可选）" style="margin-top: 12px" />
         </template>
@@ -718,22 +799,28 @@ onMounted(() => loadTab('todo'))
             <button class="flow-add" type="button" title="在此插入节点" @click="insertNodeAt(i)">+</button>
           </div>
           <div class="flow-node flow-card" @click="openNodeConfig(i)">
-            <div class="flow-card-head">
-              <span class="flow-card-title">{{ n.name || `节点 ${i + 1}(未命名)` }}</span>
-              <button class="flow-del" type="button" title="删除节点" @click.stop="removeNodeAt(i)">✕</button>
+            <div class="flow-card-icon" :style="{ background: approverTypeColor(n.approverType) }">
+              {{ approverTypeIcon(n.approverType) }}
             </div>
-            <div class="flow-card-body">
-              <span>{{ approverTypeLabel(n.approverType) }}</span>
-              <span v-if="nodeTargetName(n)">·{{ nodeTargetName(n) }}</span>
-            </div>
-            <div class="flow-card-tags">
-              <el-tag v-if="n.approverType === 'ROLE' && n.resolveMode === 'ALL'" size="small">会签</el-tag>
-              <el-tag v-if="n.approverType === 'ROLE' && n.resolveMode === 'ANYONE'" size="small">或签</el-tag>
-              <el-tag v-if="n.condition" size="small" type="warning">条件</el-tag>
-              <el-tag v-if="n.timeoutHours" size="small" type="info">{{ n.timeoutHours }}h超时</el-tag>
-              <el-tag v-if="n.rejectPolicy && n.rejectPolicy !== 'TERMINATE'" size="small" type="danger">
-                {{ REJECT_POLICY_SHORT[n.rejectPolicy] }}
-              </el-tag>
+            <div class="flow-card-content">
+              <div class="flow-card-head">
+                <span class="flow-card-seq">{{ i + 1 }}</span>
+                <span class="flow-card-title">{{ n.name || `节点 ${i + 1}(未命名)` }}</span>
+                <button class="flow-del" type="button" title="删除节点" @click.stop="removeNodeAt(i)">✕</button>
+              </div>
+              <div class="flow-card-body">
+                <span>{{ approverTypeLabel(n.approverType) }}</span>
+                <span v-if="nodeTargetName(n)" class="flow-card-target">{{ nodeTargetName(n) }}</span>
+              </div>
+              <div class="flow-card-tags">
+                <el-tag v-if="n.approverType === 'ROLE' && n.resolveMode === 'ALL'" size="small">会签</el-tag>
+                <el-tag v-if="n.approverType === 'ROLE' && n.resolveMode === 'ANYONE'" size="small">或签</el-tag>
+                <el-tag v-if="n.condition" size="small" type="warning">条件</el-tag>
+                <el-tag v-if="n.timeoutHours" size="small" type="info">{{ n.timeoutHours }}h超时</el-tag>
+                <el-tag v-if="n.rejectPolicy && n.rejectPolicy !== 'TERMINATE'" size="small" type="danger">
+                  {{ REJECT_POLICY_SHORT[n.rejectPolicy] }}
+                </el-tag>
+              </div>
             </div>
           </div>
         </template>
@@ -745,20 +832,21 @@ onMounted(() => loadTab('todo'))
         </div>
       </div>
 
-      <div class="node-editor" style="margin-top: 12px">
-        <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px">表单字段(发起时按此渲染,空=JSON 输入)</div>
-        <div v-for="(f, i) in flowFields" :key="i" class="node-row">
-          <el-input v-model="f.key" placeholder="字段标识,如 days" style="width: 110px" />
-          <el-input v-model="f.label" placeholder="显示名,如 请假天数" style="width: 130px" />
-          <el-select v-model="f.type" style="width: 110px">
-            <el-option v-for="t in FIELD_TYPES" :key="t.value" :label="t.label" :value="t.value" />
-          </el-select>
-          <el-checkbox v-model="f.required">必填</el-checkbox>
-          <el-input v-if="f.type === 'select'" v-model="f.optionsText" placeholder="选项,逗号分隔" style="width: 150px" />
-          <el-button link type="danger" @click="flowFields.splice(i, 1)">删除</el-button>
-        </div>
-        <el-button style="margin-top: 4px" @click="flowFields.push(blankField())">+ 添加字段</el-button>
-      </div>
+      <el-collapse style="margin-top: 12px">
+        <el-collapse-item title="表单字段配置（发起时按此渲染，空=JSON输入）" name="fields">
+          <div v-for="(f, i) in flowFields" :key="i" class="node-row">
+            <el-input v-model="f.key" placeholder="字段标识,如 days" style="width: 110px" />
+            <el-input v-model="f.label" placeholder="显示名,如 请假天数" style="width: 130px" />
+            <el-select v-model="f.type" style="width: 110px">
+              <el-option v-for="t in FIELD_TYPES" :key="t.value" :label="t.label" :value="t.value" />
+            </el-select>
+            <el-checkbox v-model="f.required">必填</el-checkbox>
+            <el-input v-if="f.type === 'select'" v-model="f.optionsText" placeholder="选项,逗号分隔" style="width: 150px" />
+            <el-button link type="danger" @click="flowFields.splice(i, 1)">删除</el-button>
+          </div>
+          <el-button style="margin-top: 4px" @click="flowFields.push(blankField())">+ 添加字段</el-button>
+        </el-collapse-item>
+      </el-collapse>
 
       <template #footer>
         <el-button @click="flowDialog = false">取消</el-button>
@@ -767,14 +855,15 @@ onMounted(() => loadTab('todo'))
     </el-dialog>
 
     <!-- 节点配置(点流程图卡片) -->
-    <el-dialog v-model="nodeConfigDialog" title="节点配置" width="480px" append-to-body>
-      <el-form v-if="editingNode" label-width="90px">
+    <el-dialog v-model="nodeConfigDialog" title="节点配置" width="500px" append-to-body>
+      <el-form v-if="editingNode" label-width="100px">
         <el-form-item label="节点名称">
           <el-input v-model="editingNode.name" placeholder="如 直属上级审批" />
         </el-form-item>
-        <el-form-item label="审批人">
+        <el-divider content-position="left">审批人设置</el-divider>
+        <el-form-item label="审批人类型">
           <el-select v-model="editingNode.approverType" style="width: 100%">
-            <el-option v-for="t in APPROVER_TYPES" :key="t.value" :label="t.label" :value="t.value" />
+            <el-option v-for="t in APPROVER_TYPES" :key="t.value" :label="t.icon + ' ' + t.label" :value="t.value" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="editingNode.approverType === 'SPECIFIC_USER'" label="指定人员">
@@ -787,13 +876,14 @@ onMounted(() => loadTab('todo'))
             <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="editingNode.approverType === 'ROLE'" label="多人方式">
-          <el-select v-model="editingNode.resolveMode" style="width: 100%">
-            <el-option label="单人审批" value="FIRST" />
-            <el-option label="会签(全部通过)" value="ALL" />
-            <el-option label="或签(任一通过)" value="ANYONE" />
-          </el-select>
+        <el-form-item v-if="editingNode.approverType === 'ROLE'" label="多人审批">
+          <el-radio-group v-model="editingNode.resolveMode">
+            <el-radio value="FIRST">单人审批</el-radio>
+            <el-radio value="ALL">会签(全部通过)</el-radio>
+            <el-radio value="ANYONE">或签(任一通过)</el-radio>
+          </el-radio-group>
         </el-form-item>
+        <el-divider content-position="left">高级设置</el-divider>
         <el-form-item label="驳回策略">
           <el-select v-model="editingNode.rejectPolicy" style="width: 100%">
             <el-option v-for="p in REJECT_POLICIES" :key="p.value" :label="p.label" :value="p.value" />
@@ -801,10 +891,11 @@ onMounted(() => loadTab('todo'))
         </el-form-item>
         <el-form-item label="生效条件">
           <el-input v-model="editingNode.condition" placeholder="可空,如 form.days >= 3" />
+          <div class="form-tip">满足条件时该节点生效,否则自动跳过</div>
         </el-form-item>
         <el-form-item label="超时提醒">
           <el-input-number v-model="editingNode.timeoutHours" :min="1" :max="720" style="width: 160px" />
-          <span style="color: #909399; font-size: 12px; margin-left: 8px">小时,空=不限时</span>
+          <span class="form-tip-inline">小时，空=不限时</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -839,6 +930,29 @@ onMounted(() => loadTab('todo'))
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.8;
+}
+.timeline-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.timeline-node-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #303133;
+}
+.timeline-node-info {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+}
+.timeline-node-comment {
+  font-size: 12px;
+  color: #606266;
+  margin-top: 4px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  padding: 4px 8px;
 }
 .m-list {
   display: flex;
@@ -920,6 +1034,22 @@ onMounted(() => loadTab('todo'))
   margin-bottom: 6px;
   flex-wrap: wrap;
 }
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+.form-tip-inline {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 8px;
+}
+.flow-summary {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.5;
+}
 /* 纵向流程图设计器 */
 .flow-canvas {
   display: flex;
@@ -974,27 +1104,60 @@ onMounted(() => loadTab('todo'))
   transform: scale(1.15);
 }
 .flow-card {
+  display: flex;
   border: 1px solid #dcdfe6;
   border-radius: 8px;
   background: #fff;
-  padding: 10px 12px;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   transition: box-shadow 0.15s, border-color 0.15s;
+  overflow: hidden;
 }
 .flow-card:hover {
   border-color: #409eff;
   box-shadow: 0 2px 10px rgba(64, 158, 255, 0.18);
+}
+.flow-card-icon {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.flow-card-content {
+  flex: 1;
+  padding: 8px 12px;
+  min-width: 0;
 }
 .flow-card-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
+.flow-card-seq {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f0f2f5;
+  color: #909399;
+  font-size: 11px;
+  text-align: center;
+  line-height: 18px;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
 .flow-card-title {
   font-weight: 600;
   font-size: 13px;
   color: #303133;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .flow-del {
   border: none;
@@ -1002,6 +1165,8 @@ onMounted(() => loadTab('todo'))
   color: #c0c4cc;
   cursor: pointer;
   font-size: 12px;
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 .flow-del:hover {
   color: #f56c6c;
@@ -1010,6 +1175,11 @@ onMounted(() => loadTab('todo'))
   font-size: 12px;
   color: #606266;
   margin-top: 4px;
+}
+.flow-card-target {
+  color: #409eff;
+  font-weight: 500;
+  margin-left: 6px;
 }
 .flow-card-tags {
   display: flex;

@@ -18,6 +18,7 @@ export interface ApprovalInstanceVO {
   formType: string
   formName?: string
   formData?: string
+  fieldsJson?: string
   applicantId: number
   applicantName: string
   status: string
@@ -25,6 +26,7 @@ export interface ApprovalInstanceVO {
   priority: number
   createdAt: string
   myDueAt?: string
+  warning?: string
   nodes: ApprovalNodeVO[]
 }
 

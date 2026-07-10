@@ -430,11 +430,21 @@ public class ApprovalEngineService {
             List<ApprovalResolverService.Approver> approvers = resolverService.resolveAll(
                 next.getApproverType(), next.getTargetUserId(), next.getTargetRoleId(), applicantId);
             if (approvers.isEmpty()) {
-                next.setStatus("APPROVED");
-                next.setResult("AUTO");
-                next.setActionAt(LocalDateTime.now());
-                nodeMapper.updateById(next);
-                continue;
+                if ("SELF_APPROVE".equals(next.getApproverType())) {
+                    next.setStatus("APPROVED");
+                    next.setResult("AUTO");
+                    next.setActionAt(LocalDateTime.now());
+                    nodeMapper.updateById(next);
+                    continue;
+                }
+                String typeLabel = switch (next.getApproverType()) {
+                    case "ROLE" -> "指定角色";
+                    case "LEADER" -> "直属上级";
+                    case "DEPT_LEADER" -> "部门负责人";
+                    case "SPECIFIC_USER" -> "指定人员";
+                    default -> next.getApproverType();
+                };
+                throw new BusinessException(422, "节点「" + next.getNodeName() + "」无可用审批人（" + typeLabel + "），请联系管理员检查配置");
             }
             String mode = next.getResolveMode();
             boolean multi = ("ALL".equals(mode) || "ANYONE".equals(mode)) && approvers.size() > 1;
@@ -488,14 +498,36 @@ public class ApprovalEngineService {
             .eq(WfNode::getInstanceId, instanceId)
             .orderByAsc(WfNode::getNodeOrder));
 
-        // 数据权限:申请人 / 审批链上的人 / 持 manage 权限,三者之一方可见(防同租户越权窥看)
+        // 数据权限:申请人 / 已到达节点的审批人(WAITING=未到达,不可提前窥看) / 持 manage 权限
         Long me = TenantContext.getUserId();
         boolean related = instance.getApplicantId().equals(me)
-            || nodes.stream().anyMatch(n -> me.equals(n.getApproverId()) || me.equals(n.getActionBy()));
+            || nodes.stream().anyMatch(n -> !"WAITING".equals(n.getStatus())
+                && (me.equals(n.getApproverId()) || me.equals(n.getActionBy())));
         if (!related && !hasManageAuthority()) {
             throw new BusinessException(403, "无权查看该审批");
         }
-        return toVO(instance, nodes);
+
+        ApprovalInstanceVO vo = toVO(instance, nodes);
+
+        // 填充表单字段定义(供前端结构化展示表单数据)
+        WfDefinition definition = definitionMapper.selectById(instance.getDefinitionId());
+        if (definition != null) {
+            vo.setFieldsJson(definition.getFieldsJson());
+            vo.setFormName(definition.getFormName());
+        }
+
+        // 检测当前节点审批人是否缺失(warning 提示)
+        if ("PENDING".equals(instance.getStatus()) && instance.getCurrentNode() != null) {
+            List<WfNode> active = nodes.stream()
+                .filter(n -> instance.getCurrentNode().equals(n.getNodeKey())
+                    && "APPROVING".equals(n.getStatus()))
+                .toList();
+            if (!active.isEmpty() && active.stream().allMatch(n -> n.getApproverId() == null)) {
+                vo.setWarning("当前节点「" + active.get(0).getNodeName() + "」无可用审批人，请联系管理员");
+            }
+        }
+
+        return vo;
     }
 
     private boolean hasManageAuthority() {

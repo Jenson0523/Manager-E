@@ -14,6 +14,8 @@ public class ApprovalInstanceVO {
     private String formType;
     private String formName;
     private String formData;
+    /** 流程定义的表单字段配置(JSON)，前端按此结构化展示表单数据 */
+    private String fieldsJson;
     private Long applicantId;
     private String applicantName;
     private String status;
@@ -22,6 +24,8 @@ public class ApprovalInstanceVO {
     private LocalDateTime createdAt;
     /** 待办列表用:我的待办节点截止时间(超时提醒) */
     private LocalDateTime myDueAt;
+    /** 警告提示(如节点无可用审批人等) */
+    private String warning;
     private List<NodeVO> nodes;
 
     @Data
