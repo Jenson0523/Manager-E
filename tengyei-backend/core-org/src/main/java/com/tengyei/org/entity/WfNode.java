@@ -29,6 +29,8 @@ public class WfNode extends BaseEntity {
     private LocalDateTime actionAt;
     private LocalDateTime dueAt;
     private Integer timeoutHours;
+    /** 驳回策略:TERMINATE(默认)/TO_INITIATOR/TO_PREV */
+    private String rejectPolicy;
     // ponytail: 并发审批的乐观锁保护暂缓，version 列保留待需要时再接 @Version
     private Integer version;
 }

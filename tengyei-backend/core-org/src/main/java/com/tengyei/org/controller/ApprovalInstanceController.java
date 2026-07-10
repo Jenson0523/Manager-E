@@ -52,6 +52,29 @@ public class ApprovalInstanceController {
         return Result.ok();
     }
 
+    /** 被退回后重新提交(可携带修改后的表单数据) */
+    @PutMapping("/{id}/resubmit")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")
+    @Auditable(module = "审批", actionType = "UPDATE", description = "重新提交审批")
+    public Result<Void> resubmit(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> formData = body != null ? (Map<String, Object>) body.get("formData") : null;
+        engineService.resubmit(id, formData, TenantContext.getUserId(), TenantContext.getUserName());
+        return Result.ok();
+    }
+
+    /** 加签:PRE=前加签(其先审) / POST=后加签(己审后其再审) */
+    @PutMapping("/{id}/addsign")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:approve','PERM_platform:approval:approve')")
+    @Auditable(module = "审批", actionType = "UPDATE", description = "审批加签")
+    public Result<Void> addSign(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Long targetUserId = body.get("targetUserId") != null ? ((Number) body.get("targetUserId")).longValue() : null;
+        String position = (String) body.get("position");
+        if (targetUserId == null) throw new com.tengyei.common.exception.BusinessException(422, "请选择加签人");
+        engineService.addSign(id, targetUserId, position, TenantContext.getUserId(), TenantContext.getUserName());
+        return Result.ok();
+    }
+
     @PutMapping("/{id}/act")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:approve','PERM_approval:reject','PERM_platform:approval:approve','PERM_platform:approval:reject')")
     @Auditable(module = "审批", actionType = "UPDATE", description = "审批处理")

@@ -37,5 +37,6 @@ public class ApprovalInstanceVO {
         private String comment;
         private LocalDateTime actionAt;
         private LocalDateTime dueAt;
+        private String rejectPolicy;
     }
 }

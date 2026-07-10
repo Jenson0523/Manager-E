@@ -21,6 +21,10 @@ export const approvalApi = {
   cancel: (id: number) => request.put<never, void>(`/v1/approval/instances/${id}/cancel`),
   transfer: (id: number, targetUserId: number) =>
     request.put<never, void>(`/v1/approval/instances/${id}/transfer`, { targetUserId }),
+  resubmit: (id: number, formData?: Record<string, unknown>) =>
+    request.put<never, void>(`/v1/approval/instances/${id}/resubmit`, { formData }),
+  addSign: (id: number, targetUserId: number, position: 'PRE' | 'POST') =>
+    request.put<never, void>(`/v1/approval/instances/${id}/addsign`, { targetUserId, position }),
   statistics: () => request.get<never, ApprovalStatisticsVO>('/v1/approval/statistics'),
   delegateGet: () => request.get<never, ApprovalDelegateVO | null>('/v1/approval/delegate'),
   delegateSave: (data: ApprovalDelegateVO) =>

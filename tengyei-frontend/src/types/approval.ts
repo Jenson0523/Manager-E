@@ -9,6 +9,7 @@ export interface ApprovalNodeVO {
   comment?: string
   actionAt?: string
   dueAt?: string
+  rejectPolicy?: string
 }
 
 export interface ApprovalInstanceVO {

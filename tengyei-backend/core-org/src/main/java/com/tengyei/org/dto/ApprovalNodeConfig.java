@@ -15,6 +15,8 @@ public class ApprovalNodeConfig {
     private Long targetUserId;
     private Long targetRoleId;
     private Integer timeoutHours;
+    /** 驳回策略:TERMINATE(默认)/TO_INITIATOR/TO_PREV */
+    private String rejectPolicy;
 
     @Data
     public static class Wrapper {

@@ -52,11 +52,15 @@ async function loadTab(tab: string) {
 
 type TagType = 'warning' | 'success' | 'danger' | 'info'
 function statusTag(status: string): TagType {
-  const map: Record<string, TagType> = { PENDING: 'warning', APPROVED: 'success', REJECTED: 'danger', CANCELED: 'info' }
+  const map: Record<string, TagType> = {
+    PENDING: 'warning', APPROVED: 'success', REJECTED: 'danger', CANCELED: 'info', RETURNED: 'warning',
+  }
   return map[status] ?? 'info'
 }
 function statusLabel(status: string) {
-  return { PENDING: '审批中', APPROVED: '已通过', REJECTED: '已驳回', CANCELED: '已撤销' }[status] ?? status
+  return {
+    PENDING: '审批中', APPROVED: '已通过', REJECTED: '已驳回', CANCELED: '已撤销', RETURNED: '已退回',
+  }[status as string] ?? status
 }
 
 /* 发起审批：按流程定义的字段动态渲染,无字段定义时降级 JSON 输入 */
@@ -87,10 +91,13 @@ async function openApply() {
     ElMessage.warning('暂无可用审批流程,请联系管理员配置')
     return
   }
+  resubmitId.value = null
   applyFormType.value = applyForms.value[0].formType
   onApplyTypeChange()
   applyDialog.value = true
 }
+/* 重新提交(被退回的单):复用发起表单渲染,预填原表单数据 */
+const resubmitId = ref<number | null>(null)
 async function submitApply() {
   let formData: Record<string, unknown>
   if (applyFields.value.length) {
@@ -110,10 +117,29 @@ async function submitApply() {
       return
     }
   }
-  await approvalApi.apply({ formType: applyFormType.value, formData })
-  ElMessage.success('已提交审批')
+  if (resubmitId.value != null) {
+    await approvalApi.resubmit(resubmitId.value, formData)
+    ElMessage.success('已重新提交')
+  } else {
+    await approvalApi.apply({ formType: applyFormType.value, formData })
+    ElMessage.success('已提交审批')
+  }
+  resubmitId.value = null
   applyDialog.value = false
+  detailDialog.value = false
   loadTab('my')
+}
+async function openResubmit() {
+  if (!detail.value) return
+  applyForms.value = await approvalApi.forms()
+  applyFormType.value = detail.value.formType
+  onApplyTypeChange()
+  try {
+    Object.assign(applyValues, JSON.parse(detail.value.formData || '{}'))
+    applyJsonFallback.value = detail.value.formData || '{}'
+  } catch { /* 保持空表单 */ }
+  resubmitId.value = detail.value.id
+  applyDialog.value = true
 }
 
 /* 审批详情/处理 */
@@ -169,6 +195,28 @@ async function submitTransfer() {
   loadTab(activeTab.value)
 }
 
+/* 加签:当前审批人插入一位审批人(前=其先审再回自己;后=己审后其再审) */
+const addSignDialog = ref(false)
+const addSignTarget = ref<number>()
+const addSignPosition = ref<'PRE' | 'POST'>('POST')
+async function openAddSign() {
+  addSignTarget.value = undefined
+  addSignPosition.value = 'POST'
+  if (!userOptions.value.length) await loadFlowRefs()
+  addSignDialog.value = true
+}
+async function submitAddSign() {
+  if (!detail.value || !addSignTarget.value) {
+    ElMessage.error('请选择加签人')
+    return
+  }
+  await approvalApi.addSign(detail.value.id, addSignTarget.value, addSignPosition.value)
+  ElMessage.success('已加签')
+  addSignDialog.value = false
+  detailDialog.value = false
+  loadTab(activeTab.value)
+}
+
 /* 代理设置(一人一条,休假期间由代理人审批) */
 const delegateDialog = ref(false)
 const delegateForm = reactive<ApprovalDelegateVO>({ delegateId: 0, startAt: '', endAt: '', status: 1 })
@@ -191,7 +239,7 @@ async function submitDelegate() {
   delegateDialog.value = false
 }
 
-/* 流程管理：结构化节点编辑器 */
+/* 流程管理：纵向流程图式设计器 */
 interface NodeDraft {
   name: string
   approverType: string
@@ -200,6 +248,43 @@ interface NodeDraft {
   targetUserId?: number
   targetRoleId?: number
   timeoutHours?: number
+  rejectPolicy?: string
+}
+const REJECT_POLICIES = [
+  { value: 'TERMINATE', label: '驳回即终结' },
+  { value: 'TO_INITIATOR', label: '退回发起人(可重新提交)' },
+  { value: 'TO_PREV', label: '退回上一节点重审' },
+]
+const REJECT_POLICY_SHORT: Record<string, string> = {
+  TO_INITIATOR: '驳回退发起人',
+  TO_PREV: '驳回退上一节点',
+}
+function approverTypeLabel(t: string) {
+  return APPROVER_TYPES.find((x) => x.value === t)?.label ?? t
+}
+function nodeTargetName(n: NodeDraft) {
+  if (n.approverType === 'SPECIFIC_USER') return userOptions.value.find((u) => u.id === n.targetUserId)?.name ?? ''
+  if (n.approverType === 'ROLE') return roleOptions.value.find((r) => r.id === n.targetRoleId)?.name ?? ''
+  return ''
+}
+/* 节点配置弹窗(点流程图卡片打开) */
+const nodeConfigDialog = ref(false)
+const editingNodeIndex = ref(0)
+const editingNode = computed(() => flowNodes.value[editingNodeIndex.value])
+function openNodeConfig(i: number) {
+  editingNodeIndex.value = i
+  nodeConfigDialog.value = true
+}
+function insertNodeAt(i: number) {
+  flowNodes.value.splice(i, 0, blankNode())
+  openNodeConfig(i)
+}
+function removeNodeAt(i: number) {
+  if (flowNodes.value.length === 1) {
+    ElMessage.warning('至少保留一个审批节点')
+    return
+  }
+  flowNodes.value.splice(i, 1)
 }
 const APPROVER_TYPES = [
   { value: 'LEADER', label: '直属上级' },
@@ -230,7 +315,7 @@ const userOptions = ref<{ id: number; name: string }[]>([])
 const roleOptions = ref<{ id: number; name: string }[]>([])
 
 function blankNode(): NodeDraft {
-  return { name: '', approverType: 'LEADER', resolveMode: 'FIRST', condition: '' }
+  return { name: '', approverType: 'LEADER', resolveMode: 'FIRST', condition: '', rejectPolicy: 'TERMINATE' }
 }
 async function loadFlowRefs() {
   const isPlatform = auth.userInfo?.tenantId === 0
@@ -270,6 +355,7 @@ function openFlowEdit(f: ApprovalFlowVO) {
       targetUserId: n.targetUserId as number | undefined,
       targetRoleId: n.targetRoleId as number | undefined,
       timeoutHours: n.timeoutHours as number | undefined,
+      rejectPolicy: (n.rejectPolicy as string) ?? 'TERMINATE',
     }))
   } catch {
     flowNodes.value = [blankNode()]
@@ -283,12 +369,6 @@ function openFlowEdit(f: ApprovalFlowVO) {
   }))
   loadFlowRefs()
   flowDialog.value = true
-}
-function moveNode(i: number, delta: number) {
-  const j = i + delta
-  if (j < 0 || j >= flowNodes.value.length) return
-  const arr = flowNodes.value
-  ;[arr[i], arr[j]] = [arr[j], arr[i]]
 }
 async function submitFlow() {
   for (const [i, n] of flowNodes.value.entries()) {
@@ -320,6 +400,7 @@ async function submitFlow() {
       targetUserId: n.approverType === 'SPECIFIC_USER' ? n.targetUserId : undefined,
       targetRoleId: n.approverType === 'ROLE' ? n.targetRoleId : undefined,
       timeoutHours: n.timeoutHours || undefined,
+      rejectPolicy: n.rejectPolicy && n.rejectPolicy !== 'TERMINATE' ? n.rejectPolicy : undefined,
     })),
   })
   await approvalApi.saveFlow({ ...flowForm, configJson, fieldsJson })
@@ -531,14 +612,43 @@ onMounted(() => loadTab('todo'))
       </template>
       <template #footer>
         <el-button @click="detailDialog = false">关闭</el-button>
+        <template v-if="detail?.status === 'RETURNED' && isMyApply">
+          <el-button v-if="canCancel" @click="cancelInstance">撤回</el-button>
+          <el-button type="primary" @click="openResubmit">修改并重新提交</el-button>
+        </template>
         <template v-if="detail?.status === 'PENDING'">
           <el-button v-if="isMyApply && canCancel" @click="cancelInstance">撤回</el-button>
           <el-button v-if="isMyTurn && canTransfer" @click="openTransfer">转交</el-button>
+          <el-button v-if="isMyTurn" @click="openAddSign">加签</el-button>
           <template v-if="isMyTurn">
             <el-button type="danger" @click="act('REJECT')">驳回</el-button>
             <el-button type="primary" @click="act('APPROVE')">通过</el-button>
           </template>
         </template>
+      </template>
+    </el-dialog>
+
+    <!-- 加签 -->
+    <el-dialog v-model="addSignDialog" title="审批加签" width="420px">
+      <el-form label-width="90px">
+        <el-form-item label="加签人">
+          <el-select v-model="addSignTarget" placeholder="选择加签人" filterable style="width: 100%">
+            <el-option
+              v-for="u in userOptions.filter((o) => o.id !== auth.userInfo?.userId)"
+              :key="u.id" :label="u.name" :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="加签方式">
+          <el-radio-group v-model="addSignPosition">
+            <el-radio value="PRE">前加签(其先审,再回到我)</el-radio>
+            <el-radio value="POST">后加签(我审完后其再审)</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addSignDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitAddSign">确定加签</el-button>
       </template>
     </el-dialog>
 
@@ -598,46 +708,41 @@ onMounted(() => loadTab('todo'))
         </el-form-item>
       </el-form>
 
-      <div class="node-editor">
-        <div v-for="(n, i) in flowNodes" :key="i" class="node-card">
-          <div class="node-head">
-            <span class="node-index">节点 {{ i + 1 }}</span>
-            <span class="node-actions">
-              <el-button link :disabled="i === 0" @click="moveNode(i, -1)">↑</el-button>
-              <el-button link :disabled="i === flowNodes.length - 1" @click="moveNode(i, 1)">↓</el-button>
-              <el-button link type="danger" :disabled="flowNodes.length === 1" @click="flowNodes.splice(i, 1)">删除</el-button>
-            </span>
-          </div>
-          <div class="node-row">
-            <el-input v-model="n.name" placeholder="节点名称,如 直属上级审批" style="width: 200px" />
-            <el-select v-model="n.approverType" style="width: 150px">
-              <el-option v-for="t in APPROVER_TYPES" :key="t.value" :label="t.label" :value="t.value" />
-            </el-select>
-            <el-select
-              v-if="n.approverType === 'SPECIFIC_USER'"
-              v-model="n.targetUserId" placeholder="选择人员" filterable style="width: 150px"
-            >
-              <el-option v-for="u in userOptions" :key="u.id" :label="u.name" :value="u.id" />
-            </el-select>
-            <el-select
-              v-if="n.approverType === 'ROLE'"
-              v-model="n.targetRoleId" placeholder="选择角色" style="width: 150px"
-            >
-              <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
-            </el-select>
-            <el-select v-if="n.approverType === 'ROLE'" v-model="n.resolveMode" style="width: 120px">
-              <el-option label="单人审批" value="FIRST" />
-              <el-option label="会签(全部)" value="ALL" />
-              <el-option label="或签(任一)" value="ANYONE" />
-            </el-select>
-          </div>
-          <div class="node-row">
-            <el-input v-model="n.condition" placeholder="生效条件(可空),如 form.days >= 3" style="width: 320px" />
-            <el-input-number v-model="n.timeoutHours" :min="1" :max="720" placeholder="超时(小时)" style="width: 140px" />
-            <span style="color: #909399; font-size: 12px; line-height: 32px">超时小时数,空=不限时</span>
-          </div>
+      <!-- 纵向流程图设计器:点卡片配置,点 + 插入节点 -->
+      <div class="flow-canvas">
+        <div class="flow-node flow-terminal">
+          <div class="flow-terminal-label">发起人提交</div>
         </div>
-        <el-button style="margin-top: 8px" @click="flowNodes.push(blankNode())">+ 添加节点</el-button>
+        <template v-for="(n, i) in flowNodes" :key="i">
+          <div class="flow-connector">
+            <button class="flow-add" type="button" title="在此插入节点" @click="insertNodeAt(i)">+</button>
+          </div>
+          <div class="flow-node flow-card" @click="openNodeConfig(i)">
+            <div class="flow-card-head">
+              <span class="flow-card-title">{{ n.name || `节点 ${i + 1}(未命名)` }}</span>
+              <button class="flow-del" type="button" title="删除节点" @click.stop="removeNodeAt(i)">✕</button>
+            </div>
+            <div class="flow-card-body">
+              <span>{{ approverTypeLabel(n.approverType) }}</span>
+              <span v-if="nodeTargetName(n)">·{{ nodeTargetName(n) }}</span>
+            </div>
+            <div class="flow-card-tags">
+              <el-tag v-if="n.approverType === 'ROLE' && n.resolveMode === 'ALL'" size="small">会签</el-tag>
+              <el-tag v-if="n.approverType === 'ROLE' && n.resolveMode === 'ANYONE'" size="small">或签</el-tag>
+              <el-tag v-if="n.condition" size="small" type="warning">条件</el-tag>
+              <el-tag v-if="n.timeoutHours" size="small" type="info">{{ n.timeoutHours }}h超时</el-tag>
+              <el-tag v-if="n.rejectPolicy && n.rejectPolicy !== 'TERMINATE'" size="small" type="danger">
+                {{ REJECT_POLICY_SHORT[n.rejectPolicy] }}
+              </el-tag>
+            </div>
+          </div>
+        </template>
+        <div class="flow-connector">
+          <button class="flow-add" type="button" title="在末尾添加节点" @click="insertNodeAt(flowNodes.length)">+</button>
+        </div>
+        <div class="flow-node flow-terminal flow-end">
+          <div class="flow-terminal-label">流程结束</div>
+        </div>
       </div>
 
       <div class="node-editor" style="margin-top: 12px">
@@ -658,6 +763,52 @@ onMounted(() => loadTab('todo'))
       <template #footer>
         <el-button @click="flowDialog = false">取消</el-button>
         <el-button type="primary" @click="submitFlow">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 节点配置(点流程图卡片) -->
+    <el-dialog v-model="nodeConfigDialog" title="节点配置" width="480px" append-to-body>
+      <el-form v-if="editingNode" label-width="90px">
+        <el-form-item label="节点名称">
+          <el-input v-model="editingNode.name" placeholder="如 直属上级审批" />
+        </el-form-item>
+        <el-form-item label="审批人">
+          <el-select v-model="editingNode.approverType" style="width: 100%">
+            <el-option v-for="t in APPROVER_TYPES" :key="t.value" :label="t.label" :value="t.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="editingNode.approverType === 'SPECIFIC_USER'" label="指定人员">
+          <el-select v-model="editingNode.targetUserId" placeholder="选择人员" filterable style="width: 100%">
+            <el-option v-for="u in userOptions" :key="u.id" :label="u.name" :value="u.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="editingNode.approverType === 'ROLE'" label="指定角色">
+          <el-select v-model="editingNode.targetRoleId" placeholder="选择角色" style="width: 100%">
+            <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="editingNode.approverType === 'ROLE'" label="多人方式">
+          <el-select v-model="editingNode.resolveMode" style="width: 100%">
+            <el-option label="单人审批" value="FIRST" />
+            <el-option label="会签(全部通过)" value="ALL" />
+            <el-option label="或签(任一通过)" value="ANYONE" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="驳回策略">
+          <el-select v-model="editingNode.rejectPolicy" style="width: 100%">
+            <el-option v-for="p in REJECT_POLICIES" :key="p.value" :label="p.label" :value="p.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="生效条件">
+          <el-input v-model="editingNode.condition" placeholder="可空,如 form.days >= 3" />
+        </el-form-item>
+        <el-form-item label="超时提醒">
+          <el-input-number v-model="editingNode.timeoutHours" :min="1" :max="720" style="width: 160px" />
+          <span style="color: #909399; font-size: 12px; margin-left: 8px">小时,空=不限时</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button type="primary" @click="nodeConfigDialog = false">完成</el-button>
       </template>
     </el-dialog>
   </div>
@@ -768,5 +919,105 @@ onMounted(() => loadTab('todo'))
   gap: 8px;
   margin-bottom: 6px;
   flex-wrap: wrap;
+}
+/* 纵向流程图设计器 */
+.flow-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0 8px;
+  border-top: 1px solid #ebeef5;
+  background:
+    radial-gradient(circle, #e5e9f0 1px, transparent 1px) 0 0 / 16px 16px;
+  border-radius: 8px;
+}
+.flow-node {
+  width: 260px;
+}
+.flow-terminal {
+  text-align: center;
+}
+.flow-terminal-label {
+  display: inline-block;
+  padding: 6px 22px;
+  border-radius: 16px;
+  background: #303133;
+  color: #fff;
+  font-size: 13px;
+}
+.flow-end .flow-terminal-label {
+  background: #909399;
+}
+.flow-connector {
+  position: relative;
+  width: 2px;
+  height: 40px;
+  background: #c0c4cc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.flow-add {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: #409eff;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(64, 158, 255, 0.4);
+}
+.flow-add:hover {
+  transform: scale(1.15);
+}
+.flow-card {
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.flow-card:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 10px rgba(64, 158, 255, 0.18);
+}
+.flow-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.flow-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #303133;
+}
+.flow-del {
+  border: none;
+  background: transparent;
+  color: #c0c4cc;
+  cursor: pointer;
+  font-size: 12px;
+}
+.flow-del:hover {
+  color: #f56c6c;
+}
+.flow-card-body {
+  font-size: 12px;
+  color: #606266;
+  margin-top: 4px;
+}
+.flow-card-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.flow-card-tags:empty {
+  display: none;
 }
 </style>
