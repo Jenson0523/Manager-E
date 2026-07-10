@@ -61,6 +61,27 @@ request.interceptors.response.use(
       pushToLogin()
       return Promise.reject(new Error(data.msg))
     }
+    // 403:权限可能已更新(管理员修改了角色权限),尝试刷新token后重试
+    if (data.code === 403 && !(response.config as any)._retried403) {
+      ;(response.config as any)._retried403 = true
+      return import('@/api/auth').then(({ authApi }) => {
+        return authApi.refresh()
+      }).then(async () => {
+        const newToken = localStorage.getItem('access_token')
+        if (newToken) {
+          response.config.headers.Authorization = `Bearer ${newToken}`
+        }
+        // Refresh user info so sidebar/routes update with latest permissions
+        try {
+          const { useAuthStore } = await import('@/stores/auth')
+          await useAuthStore().fetchUserInfo()
+        } catch { /* ignore — will take effect next navigation */ }
+        return request(response.config)
+      }).catch(() => {
+        ElMessage.error(data.msg || '无权限访问')
+        return Promise.reject(new Error(data.msg))
+      })
+    }
     ElMessage.error(data.msg || '请求失败')
     return Promise.reject(new Error(data.msg))
   },

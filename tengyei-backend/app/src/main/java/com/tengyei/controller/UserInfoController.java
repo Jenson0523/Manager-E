@@ -39,7 +39,21 @@ public class UserInfoController {
 
         boolean isSuperAdmin = toInt(row.get("is_super_admin")) == 1;
         boolean pwdResetRequired = toInt(row.get("pwd_reset_required")) == 1;
-        List<String> permissions = jwtService.getPermissions(token);
+        // Re-query permissions fresh from DB (not from JWT) so role changes
+        // take effect without requiring the user to re-login.
+        List<String> permissions;
+        if (isSuperAdmin) {
+            permissions = List.of("*");
+        } else {
+            permissions = jdbcTemplate.queryForList(
+                "SELECT DISTINCT p.code FROM permission p " +
+                "JOIN role_permission rp ON rp.permission_id = p.id " +
+                "JOIN user_role ur ON ur.role_id = rp.role_id " +
+                "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 " +
+                "WHERE ur.user_id = ? AND p.status = 1",
+                String.class, userId
+            );
+        }
         List<String> roleCodes = jdbcTemplate.queryForList(
             "SELECT r.code FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
             String.class, userId

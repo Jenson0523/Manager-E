@@ -27,6 +27,12 @@ const canDelegate = computed(
 const canCancel = computed(
   () => auth.hasPermission('PERM_approval:cancel') || auth.hasPermission('PERM_platform:approval:cancel')
 )
+const canApprove = computed(
+  () => auth.hasPermission('PERM_approval:approve') || auth.hasPermission('PERM_platform:approval:approve')
+)
+const canReject = computed(
+  () => auth.hasPermission('PERM_approval:reject') || auth.hasPermission('PERM_platform:approval:reject')
+)
 const isOverdue = (t?: string) => !!t && new Date(t) < new Date()
 
 const activeTab = ref('todo')
@@ -499,7 +505,7 @@ onMounted(() => loadTab('todo'))
           </el-table-column>
           <el-table-column label="操作" width="100">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">审批</el-button>
+              <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">查看</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -687,7 +693,7 @@ onMounted(() => loadTab('todo'))
             <div v-if="n.comment" class="timeline-node-comment">{{ n.comment }}</div>
           </el-timeline-item>
         </el-timeline>
-        <template v-if="detail.status === 'PENDING'">
+        <template v-if="detail.status === 'PENDING' && isMyTurn && (canApprove || canReject)">
           <el-input v-model="actComment" type="textarea" :rows="2" placeholder="审批意见（可选）" style="margin-top: 12px" />
         </template>
       </template>
@@ -700,11 +706,9 @@ onMounted(() => loadTab('todo'))
         <template v-if="detail?.status === 'PENDING'">
           <el-button v-if="isMyApply && canCancel" @click="cancelInstance">撤回</el-button>
           <el-button v-if="isMyTurn && canTransfer" @click="openTransfer">转交</el-button>
-          <el-button v-if="isMyTurn" @click="openAddSign">加签</el-button>
-          <template v-if="isMyTurn">
-            <el-button type="danger" @click="act('REJECT')">驳回</el-button>
-            <el-button type="primary" @click="act('APPROVE')">通过</el-button>
-          </template>
+          <el-button v-if="isMyTurn && canApprove" @click="openAddSign">加签</el-button>
+          <el-button v-if="isMyTurn && canReject" type="danger" @click="act('REJECT')">驳回</el-button>
+          <el-button v-if="isMyTurn && canApprove" type="primary" @click="act('APPROVE')">通过</el-button>
         </template>
       </template>
     </el-dialog>

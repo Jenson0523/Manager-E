@@ -135,6 +135,7 @@ public class AuthService {
                 "SELECT DISTINCT p.code FROM permission p " +
                 "JOIN role_permission rp ON rp.permission_id = p.id " +
                 "JOIN user_role ur ON ur.role_id = rp.role_id " +
+                "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 " +
                 "WHERE ur.user_id = ? AND p.status = 1",
                 String.class, userId
             );
@@ -201,6 +202,7 @@ public class AuthService {
             "SELECT DISTINCT p.code FROM permission p " +
             "JOIN role_permission rp ON rp.permission_id = p.id " +
             "JOIN user_role ur ON ur.role_id = rp.role_id " +
+            "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 " +
             "WHERE ur.user_id = ? AND p.status = 1",
             String.class, userId
         );
