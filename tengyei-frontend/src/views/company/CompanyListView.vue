@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { companyApi } from '@/api/company'
 import type { CompanyVO, CompanyCreateDTO, CompanyUpdateDTO } from '@/types/company'
 import { strongPasswordRule, PASSWORD_TIP } from '@/utils/password'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const canCreate = computed(() => auth.hasPermission('PERM_company:create') || auth.hasPermission('PERM_platform:company:create'))
+const canEdit = computed(() => auth.hasPermission('PERM_company:edit') || auth.hasPermission('PERM_platform:company:edit'))
+const canDisable = computed(() => auth.hasPermission('PERM_company:disable') || auth.hasPermission('PERM_platform:company:disable'))
 
 const loading = ref(false)
 const list = ref<CompanyVO[]>([])
@@ -235,7 +241,7 @@ onMounted(fetchList)
         @clear="onSearch"
       />
       <el-button type="primary" @click="onSearch">搜索</el-button>
-      <el-button type="primary" @click="openCreate">新增企业</el-button>
+      <el-button v-if="canCreate" type="primary" @click="openCreate">新增企业</el-button>
     </div>
 
     <el-table v-loading="loading" :data="list" stripe>
@@ -268,21 +274,22 @@ onMounted(fetchList)
         </template>
       </el-table-column>
       <el-table-column prop="createdAt" label="创建时间" width="180" />
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column v-if="canEdit || canDisable" label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row as CompanyVO)">编辑</el-button>
+          <el-button :disabled="!canEdit" link type="primary" @click="openEdit(row as CompanyVO)">编辑</el-button>
           <el-dropdown
+            v-if="canEdit || canDisable"
             trigger="click"
             @command="(cmd: string) => onRowCommand(cmd, row as CompanyVO)"
           >
             <el-button link type="primary" class="more-btn">更多<el-icon><ArrowDown /></el-icon></el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="toggle">
+                <el-dropdown-item v-if="canDisable" command="toggle">
                   {{ (row as CompanyVO).status === 1 ? '停用' : '启用' }}
                 </el-dropdown-item>
-                <el-dropdown-item command="reset">重置密码</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>
+                <el-dropdown-item v-if="canEdit" command="reset">重置密码</el-dropdown-item>
+                <el-dropdown-item v-if="canDisable" command="delete" divided>
                   <span style="color: var(--el-color-danger)">删除</span>
                 </el-dropdown-item>
               </el-dropdown-menu>

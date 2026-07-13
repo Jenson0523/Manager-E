@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { configApi, type SystemConfigVO } from '@/api/config'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const canEdit = computed(() => auth.hasPermission('PERM_config:edit') || auth.hasPermission('PERM_platform:config:edit'))
 
 const loading = ref(false)
 const configs = ref<SystemConfigVO[]>([])
@@ -52,10 +56,10 @@ onMounted(fetchList)
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <template v-if="editingKey === (row as SystemConfigVO).configKey">
-            <el-button link type="primary" @click="saveEdit(row as SystemConfigVO)">保存</el-button>
+            <el-button v-if="canEdit" link type="primary" @click="saveEdit(row as SystemConfigVO)">保存</el-button>
             <el-button link @click="cancelEdit">取消</el-button>
           </template>
-          <el-button v-else link type="primary" @click="startEdit(row as SystemConfigVO)">编辑</el-button>
+          <el-button v-else :disabled="!canEdit" link type="primary" @click="startEdit(row as SystemConfigVO)">编辑</el-button>
         </template>
       </el-table-column>
     </el-table>

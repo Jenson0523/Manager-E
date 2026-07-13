@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { auditApi, loginLogApi, type AuditLogVO, type LoginLogVO } from '@/api/audit'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const canExport = computed(() => auth.hasPermission('PERM_audit:export') || auth.hasPermission('PERM_platform:audit:export'))
 
 const activeTab = ref('audit')
 
@@ -169,7 +173,7 @@ function handleTabChange(tab: string | number) {
           />
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="onReset">重置</el-button>
-          <el-button :loading="exporting" @click="exportAudit">导出</el-button>
+          <el-button :disabled="!canExport" :loading="exporting" @click="exportAudit">导出</el-button>
         </div>
 
         <el-table v-loading="loading" :data="list" stripe>
@@ -240,7 +244,7 @@ function handleTabChange(tab: string | number) {
           />
           <el-button type="primary" @click="onLoginSearch">查询</el-button>
           <el-button @click="onLoginReset">重置</el-button>
-          <el-button :loading="loginExporting" @click="exportLogin">导出</el-button>
+          <el-button :disabled="!canExport" :loading="loginExporting" @click="exportLogin">导出</el-button>
         </div>
 
         <el-table v-loading="loginLoading" :data="loginList" stripe>

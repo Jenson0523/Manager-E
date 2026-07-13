@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, Refresh } from '@element-plus/icons-vue'
 import { moduleApi, type ModuleVO, type ModuleDTO } from '@/api/module'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const canManage = computed(() => auth.hasPermission('PERM_platform:module:manage') || auth.isSuperAdmin)
 
 const loading = ref(false)
 const list = ref<ModuleVO[]>([])
@@ -171,7 +175,7 @@ onMounted(fetchList)
         <el-button :icon="Refresh" @click="resetSearch">重置</el-button>
       </div>
       <div class="right">
-        <el-button type="primary" :icon="Plus" @click="openCreate">注册新模块</el-button>
+        <el-button v-if="canManage" type="primary" :icon="Plus" @click="openCreate">注册新模块</el-button>
       </div>
     </div>
 
@@ -193,7 +197,7 @@ onMounted(fetchList)
           {{ (row as ModuleVO).updatedAt?.substring(0, 19).replace('T', ' ') }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column v-if="canManage" label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row as ModuleVO)">编辑</el-button>
           <el-button

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Edit, ArrowDown } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
@@ -12,6 +12,9 @@ import type { DeptTreeVO } from '@/types/org'
 import { strongPasswordRule, strongPasswordPattern, PASSWORD_TIP } from '@/utils/password'
 
 const auth = useAuthStore()
+const canCreate = computed(() => auth.hasPermission('PERM_user:create'))
+const canEdit = computed(() => auth.hasPermission('PERM_user:edit'))
+const canExport = computed(() => auth.hasPermission('PERM_user:export') || canEdit.value)
 
 const loading = ref(false)
 const list = ref<UserVO[]>([])
@@ -344,8 +347,8 @@ onMounted(() => {
         <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" />
       </el-select>
       <el-button type="primary" @click="onSearch">搜索</el-button>
-      <el-button :loading="exporting" @click="exportList">导出</el-button>
-      <el-button v-if="auth.hasPermission('PERM_user:create')" type="primary" @click="openCreate">新增用户</el-button>
+      <el-button :disabled="!canExport" :loading="exporting" @click="exportList">导出</el-button>
+      <el-button v-if="canCreate" type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
     <el-progress
@@ -356,7 +359,7 @@ onMounted(() => {
       style="margin-bottom: 12px"
     />
 
-    <div v-if="selectedIds.length" class="batch-bar">
+    <div v-if="selectedIds.length && canEdit" class="batch-bar">
       <span>已选 {{ selectedIds.length }} 条</span>
       <el-button size="small" type="success" @click="submitBatchStatus(1)">批量启用</el-button>
       <el-button size="small" type="warning" @click="submitBatchStatus(0)">批量停用</el-button>
