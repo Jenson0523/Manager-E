@@ -80,6 +80,52 @@ class ApprovalDeepeningTest {
     }
 
     @Test
+    void emptyRoleNode_blocksApply_butNotMidFlowApprove() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String admin = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        // 造一个没有任何成员的空角色
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, is_deleted, created_at, updated_at) " +
+            "VALUES (?, '空角色', 'empty_role', 'self', 0, 1, 0, NOW(), NOW())", seeded.tenantId());
+        long emptyRoleId = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id = ? AND code = 'empty_role'", Long.class, seeded.tenantId());
+
+        // 流程A:首节点就是空角色 -> 发起时严格拦截(422)
+        String cfgA = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"空角色审批\",\"approverType\":\"ROLE\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetRoleId\":" + emptyRoleId + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"ea\",\"formName\":\"空角色单\",\"processKey\":\"EA\",\"configJson\":\"" + cfgA + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"ea\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(422));
+
+        // 流程B:节点1=admin,节点2=空角色 -> 发起时只解析节点1可过;admin 通过时节点2自动跳过,不报错
+        String cfgB = ("{\"nodes\":[" +
+            "{\"key\":\"n1\",\"name\":\"人工审批\",\"approverType\":\"SPECIFIC_USER\",\"resolveMode\":\"FIRST\"," +
+            "\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() + "}," +
+            "{\"key\":\"n2\",\"name\":\"空角色审批\",\"approverType\":\"ROLE\",\"resolveMode\":\"FIRST\"," +
+            "\"orderBy\":2,\"condition\":null,\"targetRoleId\":" + emptyRoleId + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"eb\",\"formName\":\"中途空角色单\",\"processKey\":\"EB\",\"configJson\":\"" + cfgB + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        long id = apply(admin, "eb");
+        act(admin, id, "APPROVE"); // 不应被节点2空角色打断
+        assertEquals("APPROVED", instanceStatus(id));
+        String skipComment = jdbcTemplate.queryForObject(
+            "SELECT comment FROM wf_node WHERE instance_id = ? AND node_key = 'n2'", String.class, id);
+        assertEquals(true, skipComment != null && skipComment.contains("自动跳过"));
+    }
+
+    @Test
     void rejectToInitiator_thenResubmit_flowsAgain() throws Exception {
         var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
         String admin = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());

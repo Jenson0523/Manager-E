@@ -99,7 +99,7 @@ public class ApprovalEngineService {
         }
 
         writeRecord(instance.getId(), null, applicantId, applicantName, "APPLY", null, null, "PENDING");
-        advance(instance, applicantId);
+        advance(instance, applicantId, true);
         return instance.getId();
     }
 
@@ -153,7 +153,7 @@ public class ApprovalEngineService {
                         "WHERE instance_id = ? AND node_key = ? AND status = 'APPROVING'",
                         instanceId, node.getNodeKey());
                 }
-                advance(instance, instance.getApplicantId());
+                advance(instance, instance.getApplicantId(), false);
             }
         }
         writeRecord(instanceId, node.getId(), operatorId, operatorName, action, comment, before, instance.getStatus());
@@ -222,7 +222,7 @@ public class ApprovalEngineService {
             "你发起的审批 " + instance.getInstanceNo() + " 被 " + operatorName + " 退回「" + prev.getNodeName() + "」重审"
                 + (comment != null && !comment.isBlank() ? "：" + comment : ""),
             "approval", instance.getId());
-        advance(instance, instance.getApplicantId());
+        advance(instance, instance.getApplicantId(), false);
     }
 
     /** 复制一个节点的配置为全新 WAITING 行(审批人置空,推进时重新解析) */
@@ -292,7 +292,7 @@ public class ApprovalEngineService {
         instance.setStatus("PENDING");
         instanceMapper.updateById(instance);
         writeRecord(instanceId, null, operatorId, operatorName, "RESUBMIT", null, "RETURNED", "PENDING");
-        advance(instance, operatorId);
+        advance(instance, operatorId, true);
     }
 
     @SuppressWarnings("unchecked")
@@ -379,7 +379,7 @@ public class ApprovalEngineService {
         recordMapper.insert(record);
 
         if ("PRE".equals(position)) {
-            advance(instance, instance.getApplicantId());
+            advance(instance, instance.getApplicantId(), false);
         } else {
             noticeService.send(tenantId, targetUserId,
                 "APPROVAL_TODO", "你被加签为审批人",
@@ -388,8 +388,12 @@ public class ApprovalEngineService {
         }
     }
 
-    /** 推进到下一个待办节点；自动跳过 SELF_APPROVE，全部走完则实例通过 */
-    private void advance(WfInstance instance, Long applicantId) {
+    /**
+     * 推进到下一个待办节点；自动跳过 SELF_APPROVE，全部走完则实例通过。
+     * strict=true(发起/重提):节点解析不到审批人直接报错拦截,便于及早修配置;
+     * strict=false(审批中途):跳过并留痕,不能把审批人的操作打断。
+     */
+    private void advance(WfInstance instance, Long applicantId, boolean strict) {
         while (true) {
             WfNode next = nodeMapper.selectOne(new LambdaQueryWrapper<WfNode>()
                 .eq(WfNode::getInstanceId, instance.getId())
@@ -430,21 +434,25 @@ public class ApprovalEngineService {
             List<ApprovalResolverService.Approver> approvers = resolverService.resolveAll(
                 next.getApproverType(), next.getTargetUserId(), next.getTargetRoleId(), applicantId);
             if (approvers.isEmpty()) {
-                if ("SELF_APPROVE".equals(next.getApproverType())) {
-                    next.setStatus("APPROVED");
-                    next.setResult("AUTO");
-                    next.setActionAt(LocalDateTime.now());
-                    nodeMapper.updateById(next);
-                    continue;
+                if (!"SELF_APPROVE".equals(next.getApproverType())) {
+                    String typeLabel = switch (next.getApproverType()) {
+                        case "ROLE" -> "指定角色";
+                        case "LEADER" -> "直属上级";
+                        case "DEPT_LEADER" -> "部门负责人";
+                        case "SPECIFIC_USER" -> "指定人员";
+                        default -> next.getApproverType();
+                    };
+                    if (strict) {
+                        throw new BusinessException(422,
+                            "节点「" + next.getNodeName() + "」无可用审批人（" + typeLabel + "），请联系管理员检查配置");
+                    }
+                    next.setComment("无可用审批人（" + typeLabel + "），自动跳过");
                 }
-                String typeLabel = switch (next.getApproverType()) {
-                    case "ROLE" -> "指定角色";
-                    case "LEADER" -> "直属上级";
-                    case "DEPT_LEADER" -> "部门负责人";
-                    case "SPECIFIC_USER" -> "指定人员";
-                    default -> next.getApproverType();
-                };
-                throw new BusinessException(422, "节点「" + next.getNodeName() + "」无可用审批人（" + typeLabel + "），请联系管理员检查配置");
+                next.setStatus("APPROVED");
+                next.setResult("AUTO");
+                next.setActionAt(LocalDateTime.now());
+                nodeMapper.updateById(next);
+                continue;
             }
             String mode = next.getResolveMode();
             boolean multi = ("ALL".equals(mode) || "ANYONE".equals(mode)) && approvers.size() > 1;
