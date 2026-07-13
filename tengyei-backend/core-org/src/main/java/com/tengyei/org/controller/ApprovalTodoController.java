@@ -46,6 +46,13 @@ public class ApprovalTodoController {
         return Result.ok(engineService.myApplied(TenantContext.getUserId()));
     }
 
+    /** 统计列表:按角色返回实例(管理员=全部,发起人=自己发起的,其他人=已审批的) */
+    @GetMapping("/list")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_platform:approval:view','PERM_platform:approval:apply')")
+    public Result<List<ApprovalInstanceVO>> listForStats() {
+        return Result.ok(engineService.listForStats());
+    }
+
     @GetMapping("/statistics")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_platform:approval:view','PERM_platform:approval:apply')")
     public Result<java.util.Map<String, Object>> statistics() {

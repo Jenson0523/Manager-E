@@ -53,7 +53,10 @@ async function loadTab(tab: string) {
     else if (tab === 'done') doneList.value = await approvalApi.done()
     else if (tab === 'cc') ccList.value = await approvalApi.cc()
     else if (tab === 'flows') flowList.value = await approvalApi.flows()
-    else if (tab === 'stats') stats.value = await approvalApi.statistics()
+    else if (tab === 'stats') {
+      stats.value = await approvalApi.statistics()
+      statsList.value = await approvalApi.listForStats()
+    }
   } finally {
     loading.value = false
   }
@@ -523,30 +526,34 @@ async function toggleFlow(f: ApprovalFlowVO) {
 onMounted(() => loadTab('todo'))
 
 /* Statistics helpers */
-function trendBarHeight(count: number): number {
-  const max = Math.max(...Object.values(stats.value?.dailyTrend ?? {}), 1)
-  return Math.max(4, Math.round((count / max) * 60))
-}
-function applicantApprovalRate(row: Record<string, unknown>): number {
-  const approved = Number(row.approved) || 0
-  const rejected = Number(row.rejected) || 0
-  const finished = approved + rejected
-  return finished === 0 ? 0 : Math.round(approved * 1000.0 / finished) / 10.0
-}
+const statsList = ref<ApprovalInstanceVO[]>([])
+const statsFilter = ref('')
 
-/* Statistics detail dialog */
-const statsDetailDialog = ref(false)
-const statsDetailTitle = ref('')
-const statsDetailList = ref<ApprovalInstanceVO[]>([])
-const statsDetailLoading = ref(false)
-async function clickStatCard(label: string, status?: string) {
-  statsDetailTitle.value = label
-  statsDetailDialog.value = true
-  statsDetailLoading.value = true
+function currentNodeName(row: ApprovalInstanceVO): string {
+  if (!row.nodes || row.nodes.length === 0) return ''
+  if (row.currentNode) {
+    const node = row.nodes.find((n) => n.nodeKey === row.currentNode)
+    if (node) return node.nodeName
+  }
+  return ''
+}
+const filteredStatsList = computed(() => {
+  if (!statsFilter.value) return statsList.value
+  const f = statsFilter.value.toLowerCase()
+  return statsList.value.filter((r) =>
+    (r.instanceNo ?? '').toLowerCase().includes(f) ||
+    (r.formName ?? r.formType ?? '').toLowerCase().includes(f) ||
+    (r.applicantName ?? '').toLowerCase().includes(f) ||
+    (r.status ?? '').toLowerCase().includes(f)
+  )
+})
+async function refreshStats() {
+  loading.value = true
   try {
-    statsDetailList.value = await approvalApi.statisticsDetail(status)
+    stats.value = await approvalApi.statistics()
+    statsList.value = await approvalApi.listForStats()
   } finally {
-    statsDetailLoading.value = false
+    loading.value = false
   }
 }
 </script>
@@ -690,114 +697,56 @@ async function clickStatCard(label: string, status?: string) {
       </el-tab-pane>
 
       <el-tab-pane v-if="canApply || canManage" label="统计" name="stats">
-        <div v-if="canManage" style="margin-bottom: 12px">
-          <el-button size="small" @click="exportApprovals">导出审批记录</el-button>
-        </div>
-        <template v-if="stats" v-loading="loading">
-          <!-- Overview cards -->
-          <div class="stats-grid">
-            <div class="stat-card clickable" @click="clickStatCard('审批总数', 'ALL')"><div class="stat-label">审批总数</div><div class="stat-value">{{ stats.total }}</div></div>
-            <div class="stat-card clickable" @click="clickStatCard('审批中', 'PENDING')"><div class="stat-label">审批中</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.PENDING ?? 0 }}</div></div>
-            <div class="stat-card clickable" @click="clickStatCard('已通过', 'APPROVED')"><div class="stat-label">已通过</div><div class="stat-value" style="color:#67c23a">{{ stats.byStatus.APPROVED ?? 0 }}</div></div>
-            <div class="stat-card clickable" @click="clickStatCard('已驳回', 'REJECTED')"><div class="stat-label">已驳回</div><div class="stat-value" style="color:#f56c6c">{{ stats.byStatus.REJECTED ?? 0 }}</div></div>
-            <div class="stat-card clickable" @click="clickStatCard('已撤销', 'CANCELED')"><div class="stat-label">已撤销</div><div class="stat-value" style="color:#909399">{{ stats.byStatus.CANCELED ?? 0 }}</div></div>
-            <div class="stat-card clickable" @click="clickStatCard('已退回', 'RETURNED')"><div class="stat-label">已退回</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.RETURNED ?? 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">驳回率</div><div class="stat-value">{{ stats.rejectionRate }}%</div></div>
-            <div class="stat-card"><div class="stat-label">平均时长(分钟)</div><div class="stat-value">{{ stats.avgDurationMinutes }}</div></div>
-            <div class="stat-card clickable" @click="clickStatCard('今日新增', 'TODAY')"><div class="stat-label">今日新增</div><div class="stat-value" style="color:#409eff">{{ stats.todayCount }}</div></div>
-            <div class="stat-card clickable" @click="clickStatCard('本周新增', 'WEEK')"><div class="stat-label">本周新增</div><div class="stat-value" style="color:#409eff">{{ stats.weekCount }}</div></div>
-            <div class="stat-card"><div class="stat-label">超时待办</div><div class="stat-value" :style="{ color: stats.overdueCount > 0 ? '#f56c6c' : '#111827' }">{{ stats.overdueCount }}</div></div>
-            <div class="stat-card"><div class="stat-label">通过率</div><div class="stat-value" style="color:#67c23a">{{ stats.total > 0 ? Math.round((stats.byStatus.APPROVED ?? 0) * 1000.0 / stats.total) / 10.0 : 0 }}%</div></div>
+        <template v-if="stats">
+          <!-- Compact summary bar -->
+          <div class="stats-summary-bar">
+            <span class="summary-item">总数 <b>{{ stats.total }}</b></span>
+            <span class="summary-item" style="color:#e6a23c">审批中 <b>{{ stats.byStatus.PENDING ?? 0 }}</b></span>
+            <span class="summary-item" style="color:#67c23a">已通过 <b>{{ stats.byStatus.APPROVED ?? 0 }}</b></span>
+            <span class="summary-item" style="color:#f56c6c">已驳回 <b>{{ stats.byStatus.REJECTED ?? 0 }}</b></span>
+            <span class="summary-item" style="color:#909399">已撤销 <b>{{ stats.byStatus.CANCELED ?? 0 }}</b></span>
+            <span class="summary-item">通过率 <b>{{ stats.total > 0 ? Math.round((stats.byStatus.APPROVED ?? 0) * 1000.0 / stats.total) / 10.0 : 0 }}%</b></span>
           </div>
 
-          <!-- Daily trend mini chart -->
-          <div class="stats-section">
-            <p class="stats-section-title">近7天趋势</p>
-            <div class="trend-chart">
-              <div v-for="(count, date) in stats.dailyTrend" :key="date" class="trend-bar-wrap">
-                <div class="trend-bar" :style="{ height: trendBarHeight(count) + 'px' }">
-                  <span v-if="count > 0" class="trend-bar-num">{{ count }}</span>
-                </div>
-                <span class="trend-bar-label">{{ date.slice(5) }}</span>
-              </div>
+          <!-- Toolbar -->
+          <div class="stats-toolbar">
+            <el-input v-model="statsFilter" placeholder="搜索单号/表单/申请人/状态" clearable size="small" style="width: 260px" />
+            <div>
+              <el-button size="small" @click="refreshStats">刷新</el-button>
+              <el-button v-if="canManage" size="small" @click="exportApprovals">导出</el-button>
             </div>
           </div>
 
-          <!-- Form type detail table -->
-          <div class="stats-section">
-            <p class="stats-section-title">按表单类型统计</p>
-            <el-table :data="stats.formTypeDetail" stripe size="small">
-              <el-table-column prop="formName" label="表单名称" min-width="120" />
-              <el-table-column prop="total" label="总数" width="70" align="center" />
-              <el-table-column prop="pending" label="审批中" width="70" align="center">
-                <template #default="{ row }">
-                  <span :style="{ color: row.pending > 0 ? '#e6a23c' : '' }">{{ row.pending }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="approved" label="已通过" width="70" align="center">
-                <template #default="{ row }">
-                  <span style="color:#67c23a">{{ row.approved }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="rejected" label="已驳回" width="70" align="center">
-                <template #default="{ row }">
-                  <span :style="{ color: row.rejected > 0 ? '#f56c6c' : '' }">{{ row.rejected }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="canceled" label="已撤销" width="70" align="center">
-                <template #default="{ row }">
-                  <span style="color:#909399">{{ row.canceled }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="returned" label="已退回" width="70" align="center">
-                <template #default="{ row }">
-                  <span :style="{ color: row.returned > 0 ? '#e6a23c' : '' }">{{ row.returned }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="approvalRate" label="通过率" width="80" align="center">
-                <template #default="{ row }">
-                  <el-tag :type="row.approvalRate >= 80 ? 'success' : row.approvalRate >= 50 ? 'warning' : 'danger'" size="small">
-                    {{ row.approvalRate }}%
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="avgDurationMinutes" label="平均时长(分)" width="100" align="center">
-                <template #default="{ row }">
-                  {{ row.avgDurationMinutes > 0 ? row.avgDurationMinutes : '-' }}
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
-
-          <!-- Top applicants table -->
-          <div class="stats-section">
-            <p class="stats-section-title">申请人排行 (Top 10)</p>
-            <el-table :data="stats.applicantDetail" stripe size="small">
-              <el-table-column type="index" label="#" width="50" align="center" />
-              <el-table-column prop="applicantName" label="申请人" min-width="100" />
-              <el-table-column prop="total" label="总数" width="70" align="center" />
-              <el-table-column prop="pending" label="审批中" width="70" align="center">
-                <template #default="{ row }">
-                  <span :style="{ color: row.pending > 0 ? '#e6a23c' : '' }">{{ row.pending }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="approved" label="已通过" width="70" align="center">
-                <template #default="{ row }">
-                  <span style="color:#67c23a">{{ row.approved }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="rejected" label="已驳回" width="70" align="center">
-                <template #default="{ row }">
-                  <span :style="{ color: row.rejected > 0 ? '#f56c6c' : '' }">{{ row.rejected }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="通过率" width="80" align="center">
-                <template #default="{ row }">
-                  {{ applicantApprovalRate(row) }}%
-                </template>
-              </el-table-column>
-            </el-table>
-          </div>
+          <!-- Instance list table -->
+          <el-table v-loading="loading" :data="filteredStatsList" stripe size="small" max-height="600">
+            <el-table-column prop="instanceNo" label="单号" width="160" />
+            <el-table-column label="表单类型" min-width="120">
+              <template #default="{ row }">
+                {{ (row as ApprovalInstanceVO).formName || (row as ApprovalInstanceVO).formType }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="applicantName" label="申请人" width="90" />
+            <el-table-column label="当前节点" width="120">
+              <template #default="{ row }">
+                <span v-if="(row as ApprovalInstanceVO).status === 'PENDING'" style="color:#e6a23c">{{ currentNodeName(row as ApprovalInstanceVO) || '-' }}</span>
+                <span v-else style="color:#909399">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag :type="statusTag((row as ApprovalInstanceVO).status)" size="small">
+                  {{ statusLabel((row as ApprovalInstanceVO).status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="申请时间" width="160" />
+            <el-table-column label="操作" width="70" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-if="!loading && filteredStatsList.length === 0" class="empty-tip">暂无数据</div>
         </template>
       </el-tab-pane>
 
@@ -1156,29 +1105,6 @@ async function clickStatCard(label: string, status?: string) {
         <el-button type="primary" @click="nodeConfigDialog = false">完成</el-button>
       </template>
     </el-dialog>
-
-    <!-- Statistics detail dialog -->
-    <el-dialog v-model="statsDetailDialog" :title="statsDetailTitle" width="700">
-      <el-table v-loading="statsDetailLoading" :data="statsDetailList" stripe size="small" max-height="500">
-        <el-table-column prop="instanceNo" label="编号" width="140" />
-        <el-table-column prop="formName" label="表单" min-width="100" />
-        <el-table-column prop="applicantName" label="发起人" width="80" />
-        <el-table-column label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="statusTag((row as ApprovalInstanceVO).status)" size="small">
-              {{ statusLabel((row as ApprovalInstanceVO).status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createdAt" label="申请时间" width="160" />
-        <el-table-column label="操作" width="70">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div v-if="!statsDetailLoading && statsDetailList.length === 0" class="empty-tip">暂无数据</div>
-    </el-dialog>
   </div>
 </template>
 
@@ -1345,6 +1271,28 @@ async function clickStatCard(label: string, status?: string) {
   text-align: center;
   color: #909399;
   padding: 24px 0;
+}
+.stats-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 16px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #606266;
+}
+.stats-summary-bar .summary-item b {
+  font-size: 15px;
+  color: #111827;
+  margin-left: 2px;
+}
+.stats-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 .node-editor {
   border-top: 1px solid #ebeef5;

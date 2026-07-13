@@ -588,6 +588,14 @@ public class ApprovalEngineService {
 
         ApprovalInstanceVO vo = toVO(instance, nodes);
 
+        // 非管理员/非发起人:隐藏未到达的 WAITING 节点(后续审批流程不可窥看)
+        boolean canSeeAll = instance.getApplicantId().equals(me) || hasManageAuthority();
+        if (!canSeeAll) {
+            vo.setNodes(vo.getNodes().stream()
+                .filter(n -> !"WAITING".equals(n.getStatus()))
+                .toList());
+        }
+
         // 填充表单字段定义(供前端结构化展示表单数据)
         WfDefinition definition = definitionMapper.selectById(instance.getDefinitionId());
         if (definition != null) {
@@ -976,6 +984,42 @@ public class ApprovalEngineService {
         result.put("applicantDetail", applicantDetail);
         result.put("dailyTrend", dailyTrend);
         return result;
+    }
+
+    /** 统计列表:按角色返回实例(管理员=全部, 发起人=自己发起的, 其他人=自己已审批的+抄送给自己的) */
+    public List<ApprovalInstanceVO> listForStats() {
+        Long tenantId = TenantContext.getTenantId();
+        Long userId = TenantContext.getUserId();
+        boolean isAdmin = hasManageAuthority();
+
+        List<WfInstance> instances;
+        if (isAdmin) {
+            instances = instanceMapper.selectList(new LambdaQueryWrapper<WfInstance>()
+                .eq(WfInstance::getTenantId, tenantId)
+                .orderByDesc(WfInstance::getId));
+        } else {
+            java.util.Set<Long> ids = new java.util.HashSet<>(jdbcTemplate.queryForList(
+                "SELECT DISTINCT id FROM wf_instance WHERE tenant_id = ? AND applicant_id = ?",
+                Long.class, tenantId, userId));
+            ids.addAll(jdbcTemplate.queryForList(
+                "SELECT DISTINCT instance_id FROM wf_node WHERE tenant_id = ? AND action_by = ?",
+                Long.class, tenantId, userId));
+            ids.addAll(jdbcTemplate.queryForList(
+                "SELECT DISTINCT instance_id FROM wf_record WHERE tenant_id = ? AND target_user_id = ? AND action = 'CC'",
+                Long.class, tenantId, userId));
+            if (ids.isEmpty()) return List.of();
+            instances = instanceMapper.selectList(new LambdaQueryWrapper<WfInstance>()
+                .eq(WfInstance::getTenantId, tenantId)
+                .in(WfInstance::getId, ids)
+                .orderByDesc(WfInstance::getId));
+        }
+        // Attach current node name for display
+        return instances.stream().map(i -> {
+            List<WfNode> nodes = nodeMapper.selectList(new LambdaQueryWrapper<WfNode>()
+                .eq(WfNode::getInstanceId, i.getId())
+                .orderByAsc(WfNode::getNodeOrder));
+            return toVO(i, nodes);
+        }).toList();
     }
 
     /** 按状态查询与当前用户相关的审批实例(统计卡片点击查看详情) */
