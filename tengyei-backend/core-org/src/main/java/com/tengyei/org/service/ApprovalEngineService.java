@@ -82,6 +82,44 @@ public class ApprovalEngineService {
 
         int order = 0;
         for (ApprovalNodeConfig cfg : eligible) {
+            if ("CC".equals(cfg.getApproverType())) {
+                // CC node: create one WfNode per CC user, all share the same nodeKey
+                List<Long> ccIds = cfg.getCcUserIds();
+                if (ccIds != null && !ccIds.isEmpty()) {
+                    for (Long uid : new java.util.LinkedHashSet<>(ccIds)) {
+                        if (uid == null || uid.equals(applicantId)) continue;
+                        List<String> names = jdbcTemplate.queryForList(
+                            "SELECT real_name FROM `user` WHERE id = ? AND tenant_id = ? AND is_deleted = 0 AND status = 1",
+                            String.class, uid, tenantId);
+                        if (names.isEmpty()) continue;
+                        WfNode node = new WfNode();
+                        node.setTenantId(tenantId);
+                        node.setInstanceId(instance.getId());
+                        node.setNodeKey(cfg.getKey());
+                        node.setNodeName(cfg.getName());
+                        node.setApproverType("CC");
+                        node.setApproverId(uid);
+                        node.setApproverName(names.get(0));
+                        node.setNodeOrder(order);
+                        node.setStatus("WAITING");
+                        nodeMapper.insert(node);
+                    }
+                } else if (cfg.getTargetRoleId() != null) {
+                    // CC to role: single node, resolved at advance time
+                    WfNode node = new WfNode();
+                    node.setTenantId(tenantId);
+                    node.setInstanceId(instance.getId());
+                    node.setNodeKey(cfg.getKey());
+                    node.setNodeName(cfg.getName());
+                    node.setApproverType("CC");
+                    node.setTargetRoleId(cfg.getTargetRoleId());
+                    node.setNodeOrder(order);
+                    node.setStatus("WAITING");
+                    nodeMapper.insert(node);
+                }
+                order++;
+                continue;
+            }
             WfNode node = new WfNode();
             node.setTenantId(tenantId);
             node.setInstanceId(instance.getId());
@@ -99,15 +137,8 @@ public class ApprovalEngineService {
         }
 
         writeRecord(instance.getId(), null, applicantId, applicantName, "APPLY", null, null, "PENDING");
-        // Merge default CC from flow config + user-selected CC (dedup, exclude applicant)
-        java.util.LinkedHashSet<Long> mergedCc = new java.util.LinkedHashSet<>();
-        try {
-            ApprovalNodeConfig.Wrapper wrapper = objectMapper.readValue(definition.getConfigJson(), ApprovalNodeConfig.Wrapper.class);
-            if (wrapper.getCcUserIds() != null) mergedCc.addAll(wrapper.getCcUserIds());
-        } catch (Exception ignored) { }
-        if (dto.getCcUserIds() != null) mergedCc.addAll(dto.getCcUserIds());
-        mergedCc.remove(applicantId);
-        saveCc(instance, new java.util.ArrayList<>(mergedCc), applicantId, applicantName);
+        // Applicant can still add ad-hoc CC at submission time
+        saveCc(instance, dto.getCcUserIds(), applicantId, applicantName);
         advance(instance, applicantId, true);
         return instance.getId();
     }
@@ -418,6 +449,36 @@ public class ApprovalEngineService {
                     "你发起的审批 " + instance.getInstanceNo() + " 已全部通过",
                     "approval", instance.getId());
                 return;
+            }
+            // CC node: auto-pass, send CC notifications to all recipients, continue
+            if ("CC".equals(next.getApproverType())) {
+                List<WfNode> ccGroup = nodeMapper.selectList(new LambdaQueryWrapper<WfNode>()
+                    .eq(WfNode::getInstanceId, instance.getId())
+                    .eq(WfNode::getNodeKey, next.getNodeKey())
+                    .eq(WfNode::getStatus, "WAITING"));
+                List<Long> ccTargets = new java.util.ArrayList<>();
+                for (WfNode cc : ccGroup) {
+                    if (cc.getApproverId() != null) {
+                        ccTargets.add(cc.getApproverId());
+                    } else if (cc.getTargetRoleId() != null) {
+                        // Resolve role members
+                        List<ApprovalResolverService.Approver> roleMembers = resolverService.resolveAll(
+                            "ROLE", null, cc.getTargetRoleId(), applicantId);
+                        for (var m : roleMembers) ccTargets.add(m.id());
+                    }
+                    cc.setStatus("APPROVED");
+                    cc.setResult("AUTO");
+                    cc.setComment("抄送");
+                    cc.setActionAt(LocalDateTime.now());
+                    nodeMapper.updateById(cc);
+                }
+                // Dedup, exclude applicant
+                ccTargets = new java.util.ArrayList<>(new java.util.LinkedHashSet<>(ccTargets));
+                ccTargets.remove(applicantId);
+                saveCc(instance, ccTargets, applicantId, instance.getApplicantName());
+                instance.setCurrentNode(next.getNodeKey());
+                instanceMapper.updateById(instance);
+                continue;
             }
             if (next.getApproverId() != null) {
                 // 预定审批人节点(加签/前加签暂挂组恢复):直接激活整组,不重新解析

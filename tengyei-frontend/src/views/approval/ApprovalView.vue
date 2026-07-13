@@ -93,17 +93,7 @@ function onApplyTypeChange() {
   applyFields.value = parseFields(f?.fieldsJson)
   Object.keys(applyValues).forEach((k) => delete applyValues[k])
   applyJsonFallback.value = '{}'
-  // Pre-fill default CC users from flow config
-  if (f?.configJson) {
-    try {
-      const parsed = JSON.parse(f.configJson) as { ccUserIds?: number[] }
-      applyCcUserIds.value = parsed.ccUserIds ?? []
-    } catch {
-      applyCcUserIds.value = []
-    }
-  } else {
-    applyCcUserIds.value = []
-  }
+  applyCcUserIds.value = []
 }
 const applyCcUserIds = ref<number[]>([])
 function fileFieldName(key: string): string {
@@ -323,6 +313,7 @@ interface NodeDraft {
   targetRoleId?: number
   timeoutHours?: number
   rejectPolicy?: string
+  ccUserIds?: number[]
 }
 const REJECT_POLICIES = [
   { value: 'TERMINATE', label: '驳回即终结' },
@@ -343,6 +334,13 @@ function approverTypeColor(t: string) {
   return APPROVER_TYPES.find((x) => x.value === t)?.color ?? '#909399'
 }
 function nodeTargetName(n: NodeDraft) {
+  if (n.approverType === 'CC') {
+    if (n.ccUserIds && n.ccUserIds.length) {
+      return n.ccUserIds.map((id) => userOptions.value.find((u) => u.id === id)?.name ?? '').filter(Boolean).join(', ')
+    }
+    if (n.targetRoleId) return roleOptions.value.find((r) => r.id === n.targetRoleId)?.name ?? ''
+    return ''
+  }
   if (n.approverType === 'SPECIFIC_USER') return userOptions.value.find((u) => u.id === n.targetUserId)?.name ?? ''
   if (n.approverType === 'ROLE') return roleOptions.value.find((r) => r.id === n.targetRoleId)?.name ?? ''
   return ''
@@ -353,7 +351,20 @@ const editingNodeIndex = ref(0)
 const editingNode = computed(() => flowNodes.value[editingNodeIndex.value])
 function openNodeConfig(i: number) {
   editingNodeIndex.value = i
+  // Ensure CC nodes have proper defaults
+  const n = flowNodes.value[i]
+  if (n.approverType === 'CC' && !n.resolveMode) {
+    n.resolveMode = 'FIRST'
+  }
   nodeConfigDialog.value = true
+}
+function onCcModeChange() {
+  // Clear fields when switching CC mode
+  if (editingNode.value.resolveMode === 'ALL') {
+    editingNode.value.ccUserIds = undefined
+  } else {
+    editingNode.value.targetRoleId = undefined
+  }
 }
 function insertNodeAt(i: number) {
   flowNodes.value.splice(i, 0, blankNode())
@@ -371,6 +382,7 @@ const APPROVER_TYPES = [
   { value: 'DEPT_LEADER', label: '部门负责人', icon: '🏷️', color: '#67c23a' },
   { value: 'SPECIFIC_USER', label: '指定人员', icon: '👤', color: '#e6a23c' },
   { value: 'ROLE', label: '指定角色', icon: '🔑', color: '#f56c6c' },
+  { value: 'CC', label: '抄送', icon: '📧', color: '#9b59b6' },
   { value: 'SELF_APPROVE', label: '自动通过', icon: '⚡', color: '#909399' },
 ]
 interface FieldDraft {
@@ -392,7 +404,6 @@ const flowDialog = ref(false)
 const flowForm = reactive({ formType: '', formName: '', processKey: '' })
 const flowNodes = ref<NodeDraft[]>([])
 const flowFields = ref<FieldDraft[]>([])
-const flowCcUserIds = ref<number[]>([])
 const userOptions = ref<{ id: number; name: string }[]>([])
 const roleOptions = ref<{ id: number; name: string }[]>([])
 
@@ -428,7 +439,6 @@ function openFlowCreate() {
   flowForm.processKey = ''
   flowNodes.value = [blankNode()]
   flowFields.value = []
-  flowCcUserIds.value = []
   loadFlowRefs()
   flowDialog.value = true
 }
@@ -437,7 +447,7 @@ function openFlowEdit(f: ApprovalFlowVO) {
   flowForm.formName = f.formName
   flowForm.processKey = f.processKey
   try {
-    const parsed = JSON.parse(f.configJson) as { nodes: Record<string, unknown>[]; ccUserIds?: number[] }
+    const parsed = JSON.parse(f.configJson) as { nodes: Record<string, unknown>[] }
     flowNodes.value = (parsed.nodes ?? []).map((n) => ({
       name: (n.name as string) ?? '',
       approverType: (n.approverType as string) ?? 'LEADER',
@@ -447,11 +457,10 @@ function openFlowEdit(f: ApprovalFlowVO) {
       targetRoleId: n.targetRoleId as number | undefined,
       timeoutHours: n.timeoutHours as number | undefined,
       rejectPolicy: (n.rejectPolicy as string) ?? 'TERMINATE',
+      ccUserIds: (n.ccUserIds as number[]) ?? undefined,
     }))
-    flowCcUserIds.value = parsed.ccUserIds ?? []
   } catch {
     flowNodes.value = [blankNode()]
-    flowCcUserIds.value = []
   }
   flowFields.value = parseFields(f.fieldsJson).map((x) => ({
     key: x.key,
@@ -468,6 +477,7 @@ async function submitFlow() {
     if (!n.name) { ElMessage.error(`第 ${i + 1} 个节点缺少名称`); return }
     if (n.approverType === 'SPECIFIC_USER' && !n.targetUserId) { ElMessage.error(`第 ${i + 1} 个节点需选择指定人员`); return }
     if (n.approverType === 'ROLE' && !n.targetRoleId) { ElMessage.error(`第 ${i + 1} 个节点需选择角色`); return }
+    if (n.approverType === 'CC' && !(n.ccUserIds && n.ccUserIds.length) && !n.targetRoleId) { ElMessage.error(`第 ${i + 1} 个节点(抄送)需选择抄送人或角色`); return }
   }
   for (const [i, f] of flowFields.value.entries()) {
     if (!f.key || !f.label) { ElMessage.error(`第 ${i + 1} 个字段需填写标识和名称`); return }
@@ -491,11 +501,11 @@ async function submitFlow() {
       orderBy: i + 1,
       condition: n.condition || null,
       targetUserId: n.approverType === 'SPECIFIC_USER' ? n.targetUserId : undefined,
-      targetRoleId: n.approverType === 'ROLE' ? n.targetRoleId : undefined,
+      targetRoleId: (n.approverType === 'ROLE' || n.approverType === 'CC') ? n.targetRoleId : undefined,
       timeoutHours: n.timeoutHours || undefined,
       rejectPolicy: n.rejectPolicy && n.rejectPolicy !== 'TERMINATE' ? n.rejectPolicy : undefined,
+      ccUserIds: n.approverType === 'CC' && n.ccUserIds && n.ccUserIds.length ? n.ccUserIds : undefined,
     })),
-    ccUserIds: flowCcUserIds.value.length ? flowCcUserIds.value : undefined,
   })
   await approvalApi.saveFlow({ ...flowForm, configJson, fieldsJson })
   ElMessage.success('已保存')
@@ -846,7 +856,6 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
               :key="u.id" :label="u.name" :value="u.id"
             />
           </el-select>
-          <div v-if="applyCcUserIds.length" class="form-tip">已预填流程默认抄送人,可在此基础上增删</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -1043,15 +1052,6 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
       </div>
 
       <el-collapse style="margin-top: 12px">
-        <el-collapse-item title="默认抄送人（发起时预填，发起人可增删）" name="cc">
-          <el-select v-model="flowCcUserIds" multiple filterable clearable placeholder="选择默认抄送人(可空)" style="width: 100%">
-            <el-option
-              v-for="u in userOptions"
-              :key="u.id" :label="u.name" :value="u.id"
-            />
-          </el-select>
-          <div class="form-tip">发起审批时自动填入这些抄送人,发起人可在此基础上增删</div>
-        </el-collapse-item>
         <el-collapse-item title="表单字段配置（发起时按此渲染，空=JSON输入）" name="fields">
           <div v-for="(f, i) in flowFields" :key="i" class="node-row">
             <el-input v-model="f.key" placeholder="字段标识,如 days" style="width: 110px" />
@@ -1102,6 +1102,24 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
             <el-radio value="ANYONE">或签(任一通过)</el-radio>
           </el-radio-group>
         </el-form-item>
+        <el-form-item v-if="editingNode.approverType === 'CC'" label="抄送方式">
+          <el-radio-group v-model="editingNode.resolveMode" @change="onCcModeChange">
+            <el-radio value="FIRST">指定人员</el-radio>
+            <el-radio value="ALL">按角色</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="editingNode.approverType === 'CC' && editingNode.resolveMode !== 'ALL'" label="抄送人员">
+          <el-select v-model="editingNode.ccUserIds" multiple filterable clearable placeholder="选择抄送人(可多选)" style="width: 100%">
+            <el-option v-for="u in userOptions" :key="u.id" :label="u.name" :value="u.id" />
+          </el-select>
+          <div class="form-tip">流程到达此节点时自动抄送给这些人(不占审批环节)</div>
+        </el-form-item>
+        <el-form-item v-if="editingNode.approverType === 'CC' && editingNode.resolveMode === 'ALL'" label="抄送角色">
+          <el-select v-model="editingNode.targetRoleId" placeholder="选择角色(抄送给该角色下所有人)" style="width: 100%">
+            <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
+          </el-select>
+        </el-form-item>
+        <template v-if="editingNode.approverType !== 'CC'">
         <el-divider content-position="left">高级设置</el-divider>
         <el-form-item label="驳回策略">
           <el-select v-model="editingNode.rejectPolicy" style="width: 100%">
@@ -1116,6 +1134,7 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
           <el-input-number v-model="editingNode.timeoutHours" :min="1" :max="720" style="width: 160px" />
           <span class="form-tip-inline">小时，空=不限时</span>
         </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button type="primary" @click="nodeConfigDialog = false">完成</el-button>
