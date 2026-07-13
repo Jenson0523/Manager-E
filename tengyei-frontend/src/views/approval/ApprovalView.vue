@@ -93,6 +93,17 @@ function onApplyTypeChange() {
   applyFields.value = parseFields(f?.fieldsJson)
   Object.keys(applyValues).forEach((k) => delete applyValues[k])
   applyJsonFallback.value = '{}'
+  // Pre-fill default CC users from flow config
+  if (f?.configJson) {
+    try {
+      const parsed = JSON.parse(f.configJson) as { ccUserIds?: number[] }
+      applyCcUserIds.value = parsed.ccUserIds ?? []
+    } catch {
+      applyCcUserIds.value = []
+    }
+  } else {
+    applyCcUserIds.value = []
+  }
 }
 const applyCcUserIds = ref<number[]>([])
 function fileFieldName(key: string): string {
@@ -381,6 +392,7 @@ const flowDialog = ref(false)
 const flowForm = reactive({ formType: '', formName: '', processKey: '' })
 const flowNodes = ref<NodeDraft[]>([])
 const flowFields = ref<FieldDraft[]>([])
+const flowCcUserIds = ref<number[]>([])
 const userOptions = ref<{ id: number; name: string }[]>([])
 const roleOptions = ref<{ id: number; name: string }[]>([])
 
@@ -416,6 +428,7 @@ function openFlowCreate() {
   flowForm.processKey = ''
   flowNodes.value = [blankNode()]
   flowFields.value = []
+  flowCcUserIds.value = []
   loadFlowRefs()
   flowDialog.value = true
 }
@@ -424,7 +437,7 @@ function openFlowEdit(f: ApprovalFlowVO) {
   flowForm.formName = f.formName
   flowForm.processKey = f.processKey
   try {
-    const parsed = JSON.parse(f.configJson) as { nodes: Record<string, unknown>[] }
+    const parsed = JSON.parse(f.configJson) as { nodes: Record<string, unknown>[]; ccUserIds?: number[] }
     flowNodes.value = (parsed.nodes ?? []).map((n) => ({
       name: (n.name as string) ?? '',
       approverType: (n.approverType as string) ?? 'LEADER',
@@ -435,8 +448,10 @@ function openFlowEdit(f: ApprovalFlowVO) {
       timeoutHours: n.timeoutHours as number | undefined,
       rejectPolicy: (n.rejectPolicy as string) ?? 'TERMINATE',
     }))
+    flowCcUserIds.value = parsed.ccUserIds ?? []
   } catch {
     flowNodes.value = [blankNode()]
+    flowCcUserIds.value = []
   }
   flowFields.value = parseFields(f.fieldsJson).map((x) => ({
     key: x.key,
@@ -480,6 +495,7 @@ async function submitFlow() {
       timeoutHours: n.timeoutHours || undefined,
       rejectPolicy: n.rejectPolicy && n.rejectPolicy !== 'TERMINATE' ? n.rejectPolicy : undefined,
     })),
+    ccUserIds: flowCcUserIds.value.length ? flowCcUserIds.value : undefined,
   })
   await approvalApi.saveFlow({ ...flowForm, configJson, fieldsJson })
   ElMessage.success('已保存')
@@ -495,6 +511,18 @@ async function toggleFlow(f: ApprovalFlowVO) {
 }
 
 onMounted(() => loadTab('todo'))
+
+/* Statistics helpers */
+function trendBarHeight(count: number): number {
+  const max = Math.max(...Object.values(stats.value?.dailyTrend ?? {}), 1)
+  return Math.max(4, Math.round((count / max) * 60))
+}
+function applicantApprovalRate(row: Record<string, unknown>): number {
+  const approved = Number(row.approved) || 0
+  const rejected = Number(row.rejected) || 0
+  const finished = approved + rejected
+  return finished === 0 ? 0 : Math.round(approved * 1000.0 / finished) / 10.0
+}
 </script>
 
 <template>
@@ -639,18 +667,112 @@ onMounted(() => loadTab('todo'))
         <div style="margin-bottom: 12px">
           <el-button size="small" @click="exportApprovals">导出审批记录</el-button>
         </div>
-        <div v-if="stats" v-loading="loading" class="stats-grid">
-          <div class="stat-card"><div class="stat-label">审批总数</div><div class="stat-value">{{ stats.total }}</div></div>
-          <div class="stat-card"><div class="stat-label">审批中</div><div class="stat-value">{{ stats.byStatus.PENDING ?? 0 }}</div></div>
-          <div class="stat-card"><div class="stat-label">已通过</div><div class="stat-value">{{ stats.byStatus.APPROVED ?? 0 }}</div></div>
-          <div class="stat-card"><div class="stat-label">已驳回</div><div class="stat-value">{{ stats.byStatus.REJECTED ?? 0 }}</div></div>
-          <div class="stat-card"><div class="stat-label">驳回率</div><div class="stat-value">{{ stats.rejectionRate }}%</div></div>
-          <div class="stat-card"><div class="stat-label">平均审批时长(分钟)</div><div class="stat-value">{{ stats.avgDurationMinutes }}</div></div>
-        </div>
-        <el-table v-if="stats" :data="Object.entries(stats.byFormType).map(([t, c]) => ({ formType: t, count: c }))" stripe style="margin-top: 16px">
-          <el-table-column prop="formType" label="表单类型" width="200" />
-          <el-table-column prop="count" label="数量" width="120" />
-        </el-table>
+        <template v-if="stats" v-loading="loading">
+          <!-- Overview cards -->
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">审批总数</div><div class="stat-value">{{ stats.total }}</div></div>
+            <div class="stat-card"><div class="stat-label">审批中</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.PENDING ?? 0 }}</div></div>
+            <div class="stat-card"><div class="stat-label">已通过</div><div class="stat-value" style="color:#67c23a">{{ stats.byStatus.APPROVED ?? 0 }}</div></div>
+            <div class="stat-card"><div class="stat-label">已驳回</div><div class="stat-value" style="color:#f56c6c">{{ stats.byStatus.REJECTED ?? 0 }}</div></div>
+            <div class="stat-card"><div class="stat-label">已撤销</div><div class="stat-value" style="color:#909399">{{ stats.byStatus.CANCELED ?? 0 }}</div></div>
+            <div class="stat-card"><div class="stat-label">已退回</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.RETURNED ?? 0 }}</div></div>
+            <div class="stat-card"><div class="stat-label">驳回率</div><div class="stat-value">{{ stats.rejectionRate }}%</div></div>
+            <div class="stat-card"><div class="stat-label">平均时长(分钟)</div><div class="stat-value">{{ stats.avgDurationMinutes }}</div></div>
+            <div class="stat-card"><div class="stat-label">今日新增</div><div class="stat-value" style="color:#409eff">{{ stats.todayCount }}</div></div>
+            <div class="stat-card"><div class="stat-label">本周新增</div><div class="stat-value" style="color:#409eff">{{ stats.weekCount }}</div></div>
+            <div class="stat-card"><div class="stat-label">超时待办</div><div class="stat-value" :style="{ color: stats.overdueCount > 0 ? '#f56c6c' : '#111827' }">{{ stats.overdueCount }}</div></div>
+            <div class="stat-card"><div class="stat-label">通过率</div><div class="stat-value" style="color:#67c23a">{{ stats.total > 0 ? Math.round((stats.byStatus.APPROVED ?? 0) * 1000.0 / stats.total) / 10.0 : 0 }}%</div></div>
+          </div>
+
+          <!-- Daily trend mini chart -->
+          <div class="stats-section">
+            <p class="stats-section-title">近7天趋势</p>
+            <div class="trend-chart">
+              <div v-for="(count, date) in stats.dailyTrend" :key="date" class="trend-bar-wrap">
+                <div class="trend-bar" :style="{ height: trendBarHeight(count) + 'px' }">
+                  <span v-if="count > 0" class="trend-bar-num">{{ count }}</span>
+                </div>
+                <span class="trend-bar-label">{{ date.slice(5) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Form type detail table -->
+          <div class="stats-section">
+            <p class="stats-section-title">按表单类型统计</p>
+            <el-table :data="stats.formTypeDetail" stripe size="small">
+              <el-table-column prop="formName" label="表单名称" min-width="120" />
+              <el-table-column prop="total" label="总数" width="70" align="center" />
+              <el-table-column prop="pending" label="审批中" width="70" align="center">
+                <template #default="{ row }">
+                  <span :style="{ color: row.pending > 0 ? '#e6a23c' : '' }">{{ row.pending }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="approved" label="已通过" width="70" align="center">
+                <template #default="{ row }">
+                  <span style="color:#67c23a">{{ row.approved }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="rejected" label="已驳回" width="70" align="center">
+                <template #default="{ row }">
+                  <span :style="{ color: row.rejected > 0 ? '#f56c6c' : '' }">{{ row.rejected }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="canceled" label="已撤销" width="70" align="center">
+                <template #default="{ row }">
+                  <span style="color:#909399">{{ row.canceled }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="returned" label="已退回" width="70" align="center">
+                <template #default="{ row }">
+                  <span :style="{ color: row.returned > 0 ? '#e6a23c' : '' }">{{ row.returned }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="approvalRate" label="通过率" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="row.approvalRate >= 80 ? 'success' : row.approvalRate >= 50 ? 'warning' : 'danger'" size="small">
+                    {{ row.approvalRate }}%
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="avgDurationMinutes" label="平均时长(分)" width="100" align="center">
+                <template #default="{ row }">
+                  {{ row.avgDurationMinutes > 0 ? row.avgDurationMinutes : '-' }}
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <!-- Top applicants table -->
+          <div class="stats-section">
+            <p class="stats-section-title">申请人排行 (Top 10)</p>
+            <el-table :data="stats.applicantDetail" stripe size="small">
+              <el-table-column type="index" label="#" width="50" align="center" />
+              <el-table-column prop="applicantName" label="申请人" min-width="100" />
+              <el-table-column prop="total" label="总数" width="70" align="center" />
+              <el-table-column prop="pending" label="审批中" width="70" align="center">
+                <template #default="{ row }">
+                  <span :style="{ color: row.pending > 0 ? '#e6a23c' : '' }">{{ row.pending }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="approved" label="已通过" width="70" align="center">
+                <template #default="{ row }">
+                  <span style="color:#67c23a">{{ row.approved }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="rejected" label="已驳回" width="70" align="center">
+                <template #default="{ row }">
+                  <span :style="{ color: row.rejected > 0 ? '#f56c6c' : '' }">{{ row.rejected }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="通过率" width="80" align="center">
+                <template #default="{ row }">
+                  {{ applicantApprovalRate(row) }}%
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </template>
       </el-tab-pane>
 
       <el-tab-pane v-if="canManage" label="流程管理" name="flows">
@@ -724,6 +846,7 @@ onMounted(() => loadTab('todo'))
               :key="u.id" :label="u.name" :value="u.id"
             />
           </el-select>
+          <div v-if="applyCcUserIds.length" class="form-tip">已预填流程默认抄送人,可在此基础上增删</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -920,6 +1043,15 @@ onMounted(() => loadTab('todo'))
       </div>
 
       <el-collapse style="margin-top: 12px">
+        <el-collapse-item title="默认抄送人（发起时预填，发起人可增删）" name="cc">
+          <el-select v-model="flowCcUserIds" multiple filterable clearable placeholder="选择默认抄送人(可空)" style="width: 100%">
+            <el-option
+              v-for="u in userOptions"
+              :key="u.id" :label="u.name" :value="u.id"
+            />
+          </el-select>
+          <div class="form-tip">发起审批时自动填入这些抄送人,发起人可在此基础上增删</div>
+        </el-collapse-item>
         <el-collapse-item title="表单字段配置（发起时按此渲染，空=JSON输入）" name="fields">
           <div v-for="(f, i) in flowFields" :key="i" class="node-row">
             <el-input v-model="f.key" placeholder="字段标识,如 days" style="width: 110px" />
@@ -1074,7 +1206,7 @@ onMounted(() => loadTab('todo'))
 }
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
 }
 @media (max-width: 768px) {
@@ -1096,6 +1228,48 @@ onMounted(() => loadTab('todo'))
   font-size: 24px;
   font-weight: 700;
   color: #111827;
+  margin-top: 4px;
+}
+.stats-section {
+  margin-top: 20px;
+}
+.stats-section-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+  margin-bottom: 10px;
+}
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 80px;
+  padding: 8px 0;
+}
+.trend-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+.trend-bar {
+  width: 32px;
+  background: linear-gradient(180deg, #409eff, #79bbff);
+  border-radius: 4px 4px 0 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 4px;
+  transition: height 0.3s;
+}
+.trend-bar-num {
+  font-size: 11px;
+  color: #fff;
+  margin-top: 2px;
+}
+.trend-bar-label {
+  font-size: 11px;
+  color: #909399;
   margin-top: 4px;
 }
 .node-editor {

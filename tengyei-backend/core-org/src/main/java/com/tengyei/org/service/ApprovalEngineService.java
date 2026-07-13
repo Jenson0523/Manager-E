@@ -99,7 +99,15 @@ public class ApprovalEngineService {
         }
 
         writeRecord(instance.getId(), null, applicantId, applicantName, "APPLY", null, null, "PENDING");
-        saveCc(instance, dto.getCcUserIds(), applicantId, applicantName);
+        // Merge default CC from flow config + user-selected CC (dedup, exclude applicant)
+        java.util.LinkedHashSet<Long> mergedCc = new java.util.LinkedHashSet<>();
+        try {
+            ApprovalNodeConfig.Wrapper wrapper = objectMapper.readValue(definition.getConfigJson(), ApprovalNodeConfig.Wrapper.class);
+            if (wrapper.getCcUserIds() != null) mergedCc.addAll(wrapper.getCcUserIds());
+        } catch (Exception ignored) { }
+        if (dto.getCcUserIds() != null) mergedCc.addAll(dto.getCcUserIds());
+        mergedCc.remove(applicantId);
+        saveCc(instance, new java.util.ArrayList<>(mergedCc), applicantId, applicantName);
         advance(instance, applicantId, true);
         return instance.getId();
     }
@@ -744,17 +752,59 @@ public class ApprovalEngineService {
         else delegateMapper.insert(d);
     }
 
-    /** 统计：租户维度汇总(状态分布/驳回率/平均时长/表单分布)。ponytail: 内存聚合,量大再下推 SQL */
+    /** 统计：租户维度汇总(状态分布/驳回率/平均时长/表单分布/申请人排行/趋势)。ponytail: 内存聚合,量大再下推 SQL */
     public Map<String, Object> statistics() {
+        Long tenantId = TenantContext.getTenantId();
         List<WfInstance> all = instanceMapper.selectList(new LambdaQueryWrapper<WfInstance>()
-            .eq(WfInstance::getTenantId, TenantContext.getTenantId()));
+            .eq(WfInstance::getTenantId, tenantId));
         long total = all.size();
         Map<String, Long> byStatus = new java.util.LinkedHashMap<>();
-        Map<String, Long> byFormType = new java.util.LinkedHashMap<>();
         long finished = 0, rejected = 0, durationMinutesSum = 0, durationCount = 0;
+        long todayCount = 0, weekCount = 0;
+        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDateTime weekAgo = java.time.LocalDateTime.now().minusDays(7);
+
+        // Per-form-type and per-applicant breakdowns
+        Map<String, long[]> formTypeStats = new java.util.LinkedHashMap<>(); // [total, pending, approved, rejected, canceled, returned, durationSum, durationCount]
+        Map<String, long[]> applicantStats = new java.util.LinkedHashMap<>(); // [total, pending, approved, rejected, canceled, returned]
+        java.util.Map<String, Long> dailyTrend = new java.util.LinkedHashMap<>();
+        for (int d = 6; d >= 0; d--) {
+            dailyTrend.put(today.minusDays(d).toString(), 0L);
+        }
+
         for (WfInstance i : all) {
             byStatus.merge(i.getStatus(), 1L, Long::sum);
-            byFormType.merge(i.getFormType(), 1L, Long::sum);
+
+            // Form type detail
+            long[] fts = formTypeStats.computeIfAbsent(i.getFormType(), k -> new long[8]);
+            fts[0]++; // total
+            switch (i.getStatus()) {
+                case "PENDING" -> fts[1]++;
+                case "APPROVED" -> fts[2]++;
+                case "REJECTED" -> fts[3]++;
+                case "CANCELED" -> fts[4]++;
+                case "RETURNED" -> fts[5]++;
+            }
+            if (("APPROVED".equals(i.getStatus()) || "REJECTED".equals(i.getStatus()))
+                    && i.getCreatedAt() != null && i.getUpdatedAt() != null) {
+                long dur = java.time.Duration.between(i.getCreatedAt(), i.getUpdatedAt()).toMinutes();
+                fts[6] += dur;
+                fts[7]++;
+            }
+
+            // Applicant detail
+            String applicantKey = i.getApplicantId() + ":" + (i.getApplicantName() != null ? i.getApplicantName() : "");
+            long[] as = applicantStats.computeIfAbsent(applicantKey, k -> new long[6]);
+            as[0]++; // total
+            switch (i.getStatus()) {
+                case "PENDING" -> as[1]++;
+                case "APPROVED" -> as[2]++;
+                case "REJECTED" -> as[3]++;
+                case "CANCELED" -> as[4]++;
+                case "RETURNED" -> as[5]++;
+            }
+
+            // Global stats
             if ("APPROVED".equals(i.getStatus()) || "REJECTED".equals(i.getStatus())) {
                 finished++;
                 if ("REJECTED".equals(i.getStatus())) rejected++;
@@ -763,13 +813,85 @@ public class ApprovalEngineService {
                     durationCount++;
                 }
             }
+
+            // Time-based counts
+            if (i.getCreatedAt() != null) {
+                java.time.LocalDate createdDate = i.getCreatedAt().toLocalDate();
+                if (createdDate.equals(today)) todayCount++;
+                if (i.getCreatedAt().isAfter(weekAgo)) {
+                    weekCount++;
+                    String dayKey = createdDate.toString();
+                    dailyTrend.merge(dayKey, 1L, Long::sum);
+                }
+            }
         }
+
+        // Build form type detail list
+        Map<String, String> formNameMap = new java.util.HashMap<>();
+        jdbcTemplate.queryForList(
+                "SELECT form_type, form_name FROM wf_definition WHERE tenant_id = ?", tenantId)
+            .forEach(r -> formNameMap.put((String) r.get("form_type"), (String) r.get("form_name")));
+
+        List<Map<String, Object>> formTypeDetail = new java.util.ArrayList<>();
+        for (Map.Entry<String, long[]> e : formTypeStats.entrySet()) {
+            long[] v = e.getValue();
+            long ftFinished = v[2] + v[3];
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("formType", e.getKey());
+            row.put("formName", formNameMap.getOrDefault(e.getKey(), e.getKey()));
+            row.put("total", v[0]);
+            row.put("pending", v[1]);
+            row.put("approved", v[2]);
+            row.put("rejected", v[3]);
+            row.put("canceled", v[4]);
+            row.put("returned", v[5]);
+            row.put("approvalRate", ftFinished == 0 ? 0 : Math.round(v[2] * 1000.0 / ftFinished) / 10.0);
+            row.put("avgDurationMinutes", v[7] == 0 ? 0 : v[6] / v[7]);
+            formTypeDetail.add(row);
+        }
+        formTypeDetail.sort((a, b) -> Long.compare((Long) b.get("total"), (Long) a.get("total")));
+
+        // Build applicant detail list (top 10)
+        List<Map<String, Object>> applicantDetail = new java.util.ArrayList<>();
+        for (Map.Entry<String, long[]> e : applicantStats.entrySet()) {
+            String[] parts = e.getKey().split(":", 2);
+            long[] v = e.getValue();
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("applicantId", Long.parseLong(parts[0]));
+            row.put("applicantName", parts.length > 1 ? parts[1] : "");
+            row.put("total", v[0]);
+            row.put("pending", v[1]);
+            row.put("approved", v[2]);
+            row.put("rejected", v[3]);
+            row.put("canceled", v[4]);
+            row.put("returned", v[5]);
+            applicantDetail.add(row);
+        }
+        applicantDetail.sort((a, b) -> Long.compare((Long) b.get("total"), (Long) a.get("total")));
+        if (applicantDetail.size() > 10) applicantDetail = applicantDetail.subList(0, 10);
+
+        // Overdue count: pending instances with nodes past due
+        long overdueCount = 0;
+        try {
+            overdueCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(DISTINCT n.instance_id) FROM wf_node n WHERE n.tenant_id = ? AND n.status = 'APPROVING' AND n.due_at IS NOT NULL AND n.due_at < NOW()",
+                Long.class, tenantId);
+        } catch (Exception ignored) { }
+
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("total", total);
         result.put("byStatus", byStatus);
-        result.put("byFormType", byFormType);
+        result.put("byFormType", formTypeStats.entrySet().stream()
+            .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> e.getValue()[0],
+                (a, b) -> a, java.util.LinkedHashMap::new)));
         result.put("rejectionRate", finished == 0 ? 0 : Math.round(rejected * 1000.0 / finished) / 10.0);
         result.put("avgDurationMinutes", durationCount == 0 ? 0 : durationMinutesSum / durationCount);
+        result.put("todayCount", todayCount);
+        result.put("weekCount", weekCount);
+        result.put("overdueCount", overdueCount);
+        result.put("formTypeDetail", formTypeDetail);
+        result.put("applicantDetail", applicantDetail);
+        result.put("dailyTrend", dailyTrend);
         return result;
     }
 

@@ -21,5 +21,7 @@ public class ApprovalNodeConfig {
     @Data
     public static class Wrapper {
         private List<ApprovalNodeConfig> nodes;
+        /** 默认抄送人ID列表(管理员在流程中配置,发起人提交时预填) */
+        private List<Long> ccUserIds;
     }
 }

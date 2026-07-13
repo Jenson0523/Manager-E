@@ -72,10 +72,40 @@ export interface ApprovalDelegateVO {
   status: number
 }
 
+export interface ApprovalFormTypeStat {
+  formType: string
+  formName: string
+  total: number
+  pending: number
+  approved: number
+  rejected: number
+  canceled: number
+  returned: number
+  approvalRate: number
+  avgDurationMinutes: number
+}
+
+export interface ApprovalApplicantStat {
+  applicantId: number
+  applicantName: string
+  total: number
+  pending: number
+  approved: number
+  rejected: number
+  canceled: number
+  returned: number
+}
+
 export interface ApprovalStatisticsVO {
   total: number
   byStatus: Record<string, number>
   byFormType: Record<string, number>
   rejectionRate: number
   avgDurationMinutes: number
+  todayCount: number
+  weekCount: number
+  overdueCount: number
+  formTypeDetail: ApprovalFormTypeStat[]
+  applicantDetail: ApprovalApplicantStat[]
+  dailyTrend: Record<string, number>
 }
