@@ -375,18 +375,34 @@ const nodeConfigDialog = ref(false)
 const editingNodeIndex = ref(0)
 const editingNode = computed(() => flowNodes.value[editingNodeIndex.value])
 
+// Condition editing state — use raw ref instead of computed-to-condition-string,
+// so partial edits (field selected but value not typed yet) are never wiped.
+const _condField = ref('')
+const _condOp = ref('>=')
+const _condValue = ref('')
 const editingNodeConditionField = computed({
-  get: () => parseCondition(editingNode.value?.condition).field,
-  set: (v) => updateCondition({ field: v }),
+  get: () => _condField.value,
+  set: (v) => { _condField.value = v; syncCondition() },
 })
 const editingNodeConditionOp = computed({
-  get: () => parseCondition(editingNode.value?.condition).op,
-  set: (v) => updateCondition({ op: v }),
+  get: () => _condOp.value,
+  set: (v) => { _condOp.value = v || '>='; syncCondition() },
 })
 const editingNodeConditionValue = computed({
-  get: () => parseCondition(editingNode.value?.condition).value,
-  set: (v) => updateCondition({ value: v }),
+  get: () => _condValue.value,
+  set: (v) => { _condValue.value = v; syncCondition() },
 })
+function syncCondition() {
+  const f = _condField.value, o = _condOp.value || '>=', v = _condValue.value
+  editingNode.value.condition = (f && o && (v != null && v !== ''))
+    ? `{${f}} ${o} ${v}` : ''
+}
+function loadConditionIntoEditors(cond?: string) {
+  const p = parseCondition(cond)
+  _condField.value = p.field
+  _condOp.value = p.op
+  _condValue.value = p.value
+}
 function parseCondition(cond?: string): { field: string; op: string; value: string } {
   if (!cond) return { field: '', op: '>=', value: '' }
   const s = cond.trim()
@@ -395,15 +411,6 @@ function parseCondition(cond?: string): { field: string; op: string; value: stri
   if (m) return { field: m[1], op: m[2], value: m[3] }
   return { field: '', op: '>=', value: '' }
 }
-function updateCondition(part: Partial<{ field: string; op: string; value: string }>) {
-  const cur = parseCondition(editingNode.value?.condition)
-  const next = { ...cur, ...part }
-  if (!next.field || !next.op || next.value === '' || next.value == null) {
-    editingNode.value.condition = ''
-  } else {
-    editingNode.value.condition = `{${next.field}} ${next.op} ${next.value}`
-  }
-}
 function openNodeConfig(i: number) {
   editingNodeIndex.value = i
   // Ensure CC nodes have proper defaults
@@ -411,6 +418,7 @@ function openNodeConfig(i: number) {
   if (n.approverType === 'CC' && !n.resolveMode) {
     n.resolveMode = 'FIRST'
   }
+  loadConditionIntoEditors(n.condition)
   nodeConfigDialog.value = true
 }
 function onCcModeChange() {
