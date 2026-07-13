@@ -36,11 +36,9 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ApprovalEngineService {
 
+    // 字段名支持中文(排除空白/花括号/运算符字符);兼容 {字段}/form.字段/裸字段 三种写法
     private static final Pattern CONDITION_PATTERN =
-        Pattern.compile("^\\{?(?:form\\.)?(\\w+)\\}?\\s*(>=|<=|==|!=|>|<)\\s*(.+)$");
-
-    private static final Pattern OLD_CONDITION_PATTERN =
-        Pattern.compile("^form\\.(\\w+)\\s*(>=|<=|==|!=|>|<)\\s*(.+)$");
+        Pattern.compile("^\\{?(?:form\\.)?([^\\s{}<>=!]+)\\}?\\s*(>=|<=|==|!=|>|<)\\s*(.+)$");
 
     private final WfDefinitionMapper definitionMapper;
     private final WfInstanceMapper instanceMapper;
@@ -828,16 +826,23 @@ public class ApprovalEngineService {
     public Map<String, Object> statistics() {
         Long tenantId = TenantContext.getTenantId();
         Long userId = TenantContext.getUserId();
-        // Find all instance IDs related to the current user
-        java.util.Set<Long> relatedIds = new java.util.HashSet<>(jdbcTemplate.queryForList(
-            "SELECT DISTINCT id FROM wf_instance WHERE tenant_id = ? AND applicant_id = ?",
-            Long.class, tenantId, userId));
-        relatedIds.addAll(jdbcTemplate.queryForList(
-            "SELECT DISTINCT instance_id FROM wf_node WHERE tenant_id = ? AND approver_id = ?",
-            Long.class, tenantId, userId));
-        relatedIds.addAll(jdbcTemplate.queryForList(
-            "SELECT DISTINCT instance_id FROM wf_record WHERE tenant_id = ? AND target_user_id = ? AND action = 'CC'",
-            Long.class, tenantId, userId));
+        boolean manage = hasManageAuthority();
+        // 管理者统计全租户;普通用户只统计与自己相关(发起/审批/被抄送)的单
+        java.util.Set<Long> relatedIds;
+        if (manage) {
+            relatedIds = new java.util.HashSet<>(jdbcTemplate.queryForList(
+                "SELECT id FROM wf_instance WHERE tenant_id = ?", Long.class, tenantId));
+        } else {
+            relatedIds = new java.util.HashSet<>(jdbcTemplate.queryForList(
+                "SELECT DISTINCT id FROM wf_instance WHERE tenant_id = ? AND applicant_id = ?",
+                Long.class, tenantId, userId));
+            relatedIds.addAll(jdbcTemplate.queryForList(
+                "SELECT DISTINCT instance_id FROM wf_node WHERE tenant_id = ? AND approver_id = ?",
+                Long.class, tenantId, userId));
+            relatedIds.addAll(jdbcTemplate.queryForList(
+                "SELECT DISTINCT instance_id FROM wf_record WHERE tenant_id = ? AND target_user_id = ? AND action = 'CC'",
+                Long.class, tenantId, userId));
+        }
         if (relatedIds.isEmpty()) {
             Map<String, Object> empty = new java.util.LinkedHashMap<>();
             empty.put("total", 0); empty.put("byStatus", Map.of());
@@ -973,6 +978,7 @@ public class ApprovalEngineService {
         } catch (Exception ignored) { }
 
         Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("scope", manage ? "all" : "self");
         result.put("total", total);
         result.put("byStatus", byStatus);
         result.put("byFormType", formTypeStats.entrySet().stream()
@@ -1133,20 +1139,18 @@ public class ApprovalEngineService {
 
     private boolean evalCondition(String condition, Map<String, Object> formData) {
         if (condition == null || condition.isBlank()) return true;
-        String trimmed = condition.trim();
-        Matcher m = CONDITION_PATTERN.matcher(trimmed);
-        if (!m.matches()) {
-            // Try legacy form.field format for backward compatibility
-            m = OLD_CONDITION_PATTERN.matcher(trimmed);
-            if (!m.matches()) return false;
-        }
+        Matcher m = CONDITION_PATTERN.matcher(condition.trim());
+        if (!m.matches()) return false;
         String fieldKey = m.group(1);
+        String op = m.group(2);
+        String rhsRaw = stripQuotes(m.group(3).trim());
         Object lhsObj = formData == null ? null : formData.get(fieldKey);
         if (lhsObj == null) return false;
+        String lhsRaw = lhsObj.toString().trim();
         try {
-            double lhs = Double.parseDouble(lhsObj.toString());
-            double rhs = Double.parseDouble(m.group(3).trim());
-            return switch (m.group(2)) {
+            double lhs = Double.parseDouble(lhsRaw);
+            double rhs = Double.parseDouble(rhsRaw);
+            return switch (op) {
                 case ">" -> lhs > rhs;
                 case ">=" -> lhs >= rhs;
                 case "<" -> lhs < rhs;
@@ -1156,9 +1160,22 @@ public class ApprovalEngineService {
                 default -> false;
             };
         } catch (NumberFormatException e) {
-            return false;
+            // 非数字值(下拉/文本字段):== / != 按字符串比较,大小比较无意义返回不满足
+            return switch (op) {
+                case "==" -> lhsRaw.equals(rhsRaw);
+                case "!=" -> !lhsRaw.equals(rhsRaw);
+                default -> false;
+            };
         }
     }
+
+    private String stripQuotes(String s) {
+        if (s.length() >= 2 && ((s.startsWith("\"") && s.endsWith("\"")) || (s.startsWith("'") && s.endsWith("'")))) {
+            return s.substring(1, s.length() - 1);
+        }
+        return s;
+    }
+
 
     private String genInstanceNo() {
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);

@@ -69,6 +69,9 @@ function statusTag(status: string): TagType {
   }
   return map[status] ?? 'info'
 }
+function fmtTime(t?: string) {
+  return t ? String(t).replace('T', ' ') : ''
+}
 function statusLabel(status: string) {
   return {
     PENDING: '审批中', APPROVED: '已通过', REJECTED: '已驳回', CANCELED: '已撤销', RETURNED: '已退回',
@@ -388,7 +391,7 @@ function parseCondition(cond?: string): { field: string; op: string; value: stri
   if (!cond) return { field: '', op: '>=', value: '' }
   const s = cond.trim()
   // Match {field} op value or field op value or form.field op value
-  const m = s.match(/^\{?(?:form\.)?(\w+)\}?\s*(>=|<=|==|!=|>|<)\s*(.+)$/)
+  const m = s.match(/^\{?(?:form\.)?([^\s{}<>=!]+)\}?\s*(>=|<=|==|!=|>|<)\s*(.+)$/)
   if (m) return { field: m[1], op: m[2], value: m[3] }
   return { field: '', op: '>=', value: '' }
 }
@@ -626,15 +629,21 @@ async function refreshStats() {
               <el-tag v-if="isOverdue(row.myDueAt)" type="danger" size="small">已超时</el-tag>
             </div>
             <div class="m-card-line">{{ row.instanceNo }}</div>
-            <div class="m-card-line">申请人:{{ row.applicantName }} · {{ row.createdAt }}</div>
+            <div class="m-card-line">申请人:{{ row.applicantName }} · {{ fmtTime(row.createdAt) }}</div>
           </div>
           <el-empty v-if="!todoList.length" description="暂无待办" :image-size="60" />
         </div>
         <el-table v-else v-loading="loading" :data="todoList" stripe>
           <el-table-column prop="instanceNo" label="单号" width="180" />
-          <el-table-column prop="formType" label="表单类型" width="120" />
+          <el-table-column label="表单类型" width="140">
+            <template #default="{ row }">
+              {{ (row as ApprovalInstanceVO).formName || (row as ApprovalInstanceVO).formType }}
+            </template>
+          </el-table-column>
           <el-table-column prop="applicantName" label="申请人" width="120" />
-          <el-table-column prop="createdAt" label="申请时间" width="180" />
+          <el-table-column label="申请时间" width="170">
+            <template #default="{ row }">{{ fmtTime((row as ApprovalInstanceVO).createdAt) }}</template>
+          </el-table-column>
           <el-table-column label="时限" width="100">
             <template #default="{ row }">
               <el-tag v-if="isOverdue((row as ApprovalInstanceVO).myDueAt)" type="danger" size="small">已超时</el-tag>
@@ -657,13 +666,17 @@ async function refreshStats() {
               <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
             </div>
             <div class="m-card-line">{{ row.instanceNo }}</div>
-            <div class="m-card-line">{{ row.createdAt }}</div>
+            <div class="m-card-line">{{ fmtTime(row.createdAt) }}</div>
           </div>
           <el-empty v-if="!myList.length" description="暂无记录" :image-size="60" />
         </div>
         <el-table v-else v-loading="loading" :data="myList" stripe>
           <el-table-column prop="instanceNo" label="单号" width="180" />
-          <el-table-column prop="formType" label="表单类型" width="120" />
+          <el-table-column label="表单类型" width="140">
+            <template #default="{ row }">
+              {{ (row as ApprovalInstanceVO).formName || (row as ApprovalInstanceVO).formType }}
+            </template>
+          </el-table-column>
           <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="statusTag((row as ApprovalInstanceVO).status)">
@@ -672,7 +685,9 @@ async function refreshStats() {
             </template>
           </el-table-column>
           <el-table-column prop="currentNode" label="当前节点" width="140" />
-          <el-table-column prop="createdAt" label="申请时间" width="180" />
+          <el-table-column label="申请时间" width="170">
+            <template #default="{ row }">{{ fmtTime((row as ApprovalInstanceVO).createdAt) }}</template>
+          </el-table-column>
           <el-table-column label="操作" width="100">
             <template #default="{ row }">
               <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">查看</el-button>
@@ -695,7 +710,11 @@ async function refreshStats() {
         </div>
         <el-table v-else v-loading="loading" :data="doneList" stripe>
           <el-table-column prop="instanceNo" label="单号" width="180" />
-          <el-table-column prop="formType" label="表单类型" width="120" />
+          <el-table-column label="表单类型" width="140">
+            <template #default="{ row }">
+              {{ (row as ApprovalInstanceVO).formName || (row as ApprovalInstanceVO).formType }}
+            </template>
+          </el-table-column>
           <el-table-column prop="applicantName" label="申请人" width="120" />
           <el-table-column label="状态" width="100">
             <template #default="{ row }">
@@ -720,7 +739,7 @@ async function refreshStats() {
               <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
             </div>
             <div class="m-card-line">{{ row.instanceNo }}</div>
-            <div class="m-card-line">申请人:{{ row.applicantName }} · {{ row.createdAt }}</div>
+            <div class="m-card-line">申请人:{{ row.applicantName }} · {{ fmtTime(row.createdAt) }}</div>
           </div>
           <el-empty v-if="!ccList.length" description="暂无抄送" :image-size="60" />
         </div>
@@ -739,7 +758,9 @@ async function refreshStats() {
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createdAt" label="申请时间" width="180" />
+          <el-table-column label="申请时间" width="170">
+            <template #default="{ row }">{{ fmtTime((row as ApprovalInstanceVO).createdAt) }}</template>
+          </el-table-column>
           <el-table-column label="操作" width="100">
             <template #default="{ row }">
               <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">查看</el-button>
@@ -752,6 +773,9 @@ async function refreshStats() {
         <template v-if="stats">
           <!-- Compact summary bar -->
           <div class="stats-summary-bar">
+            <el-tag size="small" :type="stats.scope === 'all' ? 'success' : 'info'" style="margin-right: 4px">
+              {{ stats.scope === 'all' ? '全公司数据' : '与我相关' }}
+            </el-tag>
             <span class="summary-item">总数 <b>{{ stats.total }}</b></span>
             <span class="summary-item" style="color:#e6a23c">审批中 <b>{{ stats.byStatus.PENDING ?? 0 }}</b></span>
             <span class="summary-item" style="color:#67c23a">已通过 <b>{{ stats.byStatus.APPROVED ?? 0 }}</b></span>
@@ -1163,7 +1187,7 @@ async function refreshStats() {
             </el-select>
             <el-input v-model="editingNodeConditionValue" placeholder="值,如 2" style="width: 120px" />
           </div>
-          <div class="form-tip">满足条件时该节点生效,否则自动跳过</div>
+          <div class="form-tip">满足条件时该节点生效,否则自动跳过;可选字段来自本流程「表单字段」区,新增条件字段(如 金额)请先在流程配置弹窗下方添加</div>
         </el-form-item>
         <el-form-item label="超时提醒">
           <el-input-number v-model="editingNode.timeoutHours" :min="1" :max="720" style="width: 160px" />

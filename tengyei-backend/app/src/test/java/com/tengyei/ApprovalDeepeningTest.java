@@ -186,6 +186,57 @@ class ApprovalDeepeningTest {
                 .andExpect(jsonPath("$.code").value(403));
     }
 
+
+    @Test
+    void conditionWithChineseKey_and_stringValue_routesNodes() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String admin = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+
+        // n1 无条件;n2 条件 {金额} >= 1000;n3 条件 {类型} == 紧急 (均为 admin 审批)
+        String cfg = ("{\"nodes\":[" +
+            "{\"key\":\"n1\",\"name\":\"一级\",\"approverType\":\"SPECIFIC_USER\",\"resolveMode\":\"FIRST\"," +
+            "\"orderBy\":1,\"condition\":null,\"targetUserId\":" + seeded.adminUserId() + "}," +
+            "{\"key\":\"n2\",\"name\":\"大额复核\",\"approverType\":\"SPECIFIC_USER\",\"resolveMode\":\"FIRST\"," +
+            "\"orderBy\":2,\"condition\":\"{金额} >= 1000\",\"targetUserId\":" + seeded.adminUserId() + "}," +
+            "{\"key\":\"n3\",\"name\":\"紧急加审\",\"approverType\":\"SPECIFIC_USER\",\"resolveMode\":\"FIRST\"," +
+            "\"orderBy\":3,\"condition\":\"{类型} == 紧急\",\"targetUserId\":" + seeded.adminUserId() + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"cond\",\"formName\":\"条件单\",\"processKey\":\"COND\",\"configJson\":\"" + cfg + "\"}"
+                    ))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 小额+普通:只走 n1
+        String b1 = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"cond\",\"formData\":{\"金额\":500,\"类型\":\"普通\"}}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        long id1 = objectMapper.readTree(b1).get("data").get("id").asLong();
+        assertEquals(0L, (long) jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM wf_node WHERE instance_id = ? AND node_key IN ('n2','n3')", Long.class, id1));
+        act(admin, id1, "APPROVE");
+        assertEquals("APPROVED", instanceStatus(id1));
+
+        // 大额+紧急:n2、n3 都生效,需三次通过
+        String b2 = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"cond\",\"formData\":{\"金额\":2000,\"类型\":\"紧急\"}}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        long id2 = objectMapper.readTree(b2).get("data").get("id").asLong();
+        assertEquals(2L, (long) jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM wf_node WHERE instance_id = ? AND node_key IN ('n2','n3')", Long.class, id2));
+        act(admin, id2, "APPROVE");
+        act(admin, id2, "APPROVE");
+        act(admin, id2, "APPROVE");
+        assertEquals("APPROVED", instanceStatus(id2));
+    }
+
     @Test
     void rejectToInitiator_thenResubmit_flowsAgain() throws Exception {
         var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);

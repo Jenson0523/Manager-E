@@ -99,6 +99,7 @@ export interface ApprovalApplicantStat {
 }
 
 export interface ApprovalStatisticsVO {
+  scope?: 'all' | 'self'
   total: number
   byStatus: Record<string, number>
   byFormType: Record<string, number>
