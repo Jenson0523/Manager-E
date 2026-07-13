@@ -533,6 +533,22 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
   const finished = approved + rejected
   return finished === 0 ? 0 : Math.round(approved * 1000.0 / finished) / 10.0
 }
+
+/* Statistics detail dialog */
+const statsDetailDialog = ref(false)
+const statsDetailTitle = ref('')
+const statsDetailList = ref<ApprovalInstanceVO[]>([])
+const statsDetailLoading = ref(false)
+async function clickStatCard(label: string, status?: string) {
+  statsDetailTitle.value = label
+  statsDetailDialog.value = true
+  statsDetailLoading.value = true
+  try {
+    statsDetailList.value = await approvalApi.statisticsDetail(status)
+  } finally {
+    statsDetailLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -673,23 +689,23 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane v-if="canManage" label="统计" name="stats">
-        <div style="margin-bottom: 12px">
+      <el-tab-pane v-if="canApply || canManage" label="统计" name="stats">
+        <div v-if="canManage" style="margin-bottom: 12px">
           <el-button size="small" @click="exportApprovals">导出审批记录</el-button>
         </div>
         <template v-if="stats" v-loading="loading">
           <!-- Overview cards -->
           <div class="stats-grid">
-            <div class="stat-card"><div class="stat-label">审批总数</div><div class="stat-value">{{ stats.total }}</div></div>
-            <div class="stat-card"><div class="stat-label">审批中</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.PENDING ?? 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">已通过</div><div class="stat-value" style="color:#67c23a">{{ stats.byStatus.APPROVED ?? 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">已驳回</div><div class="stat-value" style="color:#f56c6c">{{ stats.byStatus.REJECTED ?? 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">已撤销</div><div class="stat-value" style="color:#909399">{{ stats.byStatus.CANCELED ?? 0 }}</div></div>
-            <div class="stat-card"><div class="stat-label">已退回</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.RETURNED ?? 0 }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('审批总数', 'ALL')"><div class="stat-label">审批总数</div><div class="stat-value">{{ stats.total }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('审批中', 'PENDING')"><div class="stat-label">审批中</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.PENDING ?? 0 }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('已通过', 'APPROVED')"><div class="stat-label">已通过</div><div class="stat-value" style="color:#67c23a">{{ stats.byStatus.APPROVED ?? 0 }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('已驳回', 'REJECTED')"><div class="stat-label">已驳回</div><div class="stat-value" style="color:#f56c6c">{{ stats.byStatus.REJECTED ?? 0 }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('已撤销', 'CANCELED')"><div class="stat-label">已撤销</div><div class="stat-value" style="color:#909399">{{ stats.byStatus.CANCELED ?? 0 }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('已退回', 'RETURNED')"><div class="stat-label">已退回</div><div class="stat-value" style="color:#e6a23c">{{ stats.byStatus.RETURNED ?? 0 }}</div></div>
             <div class="stat-card"><div class="stat-label">驳回率</div><div class="stat-value">{{ stats.rejectionRate }}%</div></div>
             <div class="stat-card"><div class="stat-label">平均时长(分钟)</div><div class="stat-value">{{ stats.avgDurationMinutes }}</div></div>
-            <div class="stat-card"><div class="stat-label">今日新增</div><div class="stat-value" style="color:#409eff">{{ stats.todayCount }}</div></div>
-            <div class="stat-card"><div class="stat-label">本周新增</div><div class="stat-value" style="color:#409eff">{{ stats.weekCount }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('今日新增', 'TODAY')"><div class="stat-label">今日新增</div><div class="stat-value" style="color:#409eff">{{ stats.todayCount }}</div></div>
+            <div class="stat-card clickable" @click="clickStatCard('本周新增', 'WEEK')"><div class="stat-label">本周新增</div><div class="stat-value" style="color:#409eff">{{ stats.weekCount }}</div></div>
             <div class="stat-card"><div class="stat-label">超时待办</div><div class="stat-value" :style="{ color: stats.overdueCount > 0 ? '#f56c6c' : '#111827' }">{{ stats.overdueCount }}</div></div>
             <div class="stat-card"><div class="stat-label">通过率</div><div class="stat-value" style="color:#67c23a">{{ stats.total > 0 ? Math.round((stats.byStatus.APPROVED ?? 0) * 1000.0 / stats.total) / 10.0 : 0 }}%</div></div>
           </div>
@@ -1140,6 +1156,29 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
         <el-button type="primary" @click="nodeConfigDialog = false">完成</el-button>
       </template>
     </el-dialog>
+
+    <!-- Statistics detail dialog -->
+    <el-dialog v-model="statsDetailDialog" :title="statsDetailTitle" width="700">
+      <el-table v-loading="statsDetailLoading" :data="statsDetailList" stripe size="small" max-height="500">
+        <el-table-column prop="instanceNo" label="编号" width="140" />
+        <el-table-column prop="formName" label="表单" min-width="100" />
+        <el-table-column prop="applicantName" label="发起人" width="80" />
+        <el-table-column label="状态" width="80">
+          <template #default="{ row }">
+            <el-tag :type="statusTag((row as ApprovalInstanceVO).status)" size="small">
+              {{ statusLabel((row as ApprovalInstanceVO).status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="申请时间" width="160" />
+        <el-table-column label="操作" width="70">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!statsDetailLoading && statsDetailList.length === 0" class="empty-tip">暂无数据</div>
+    </el-dialog>
   </div>
 </template>
 
@@ -1238,6 +1277,17 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
   border-radius: 8px;
   padding: 14px 16px;
   background: #fafbfc;
+  cursor: default;
+}
+.stat-card.clickable {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.stat-card.clickable:hover {
+  border-color: #409eff;
+  background: #ecf5ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
 }
 .stat-label {
   font-size: 13px;
@@ -1290,6 +1340,11 @@ function applicantApprovalRate(row: Record<string, unknown>): number {
   font-size: 11px;
   color: #909399;
   margin-top: 4px;
+}
+.empty-tip {
+  text-align: center;
+  color: #909399;
+  padding: 24px 0;
 }
 .node-editor {
   border-top: 1px solid #ebeef5;

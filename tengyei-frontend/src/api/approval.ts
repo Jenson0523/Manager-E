@@ -32,6 +32,8 @@ export const approvalApi = {
   addSign: (id: number, targetUserId: number, position: 'PRE' | 'POST') =>
     request.put<never, void>(`/v1/approval/instances/${id}/addsign`, { targetUserId, position }),
   statistics: () => request.get<never, ApprovalStatisticsVO>('/v1/approval/statistics'),
+  statisticsDetail: (status?: string) =>
+    request.get<never, ApprovalInstanceVO[]>('/v1/approval/statistics/detail', { params: { status } }),
   delegateGet: () => request.get<never, ApprovalDelegateVO | null>('/v1/approval/delegate'),
   delegateSave: (data: ApprovalDelegateVO) =>
     request.put<never, void>('/v1/approval/delegate', data),

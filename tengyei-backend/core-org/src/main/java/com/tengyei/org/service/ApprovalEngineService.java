@@ -813,11 +813,33 @@ public class ApprovalEngineService {
         else delegateMapper.insert(d);
     }
 
-    /** 统计：租户维度汇总(状态分布/驳回率/平均时长/表单分布/申请人排行/趋势)。ponytail: 内存聚合,量大再下推 SQL */
+    /** 统计：仅统计与当前用户相关的实例(作为发起人/审批人/抄送人)，数据不串 */
     public Map<String, Object> statistics() {
         Long tenantId = TenantContext.getTenantId();
+        Long userId = TenantContext.getUserId();
+        // Find all instance IDs related to the current user
+        java.util.Set<Long> relatedIds = new java.util.HashSet<>(jdbcTemplate.queryForList(
+            "SELECT DISTINCT id FROM wf_instance WHERE tenant_id = ? AND applicant_id = ?",
+            Long.class, tenantId, userId));
+        relatedIds.addAll(jdbcTemplate.queryForList(
+            "SELECT DISTINCT instance_id FROM wf_node WHERE tenant_id = ? AND approver_id = ?",
+            Long.class, tenantId, userId));
+        relatedIds.addAll(jdbcTemplate.queryForList(
+            "SELECT DISTINCT instance_id FROM wf_record WHERE tenant_id = ? AND target_user_id = ? AND action = 'CC'",
+            Long.class, tenantId, userId));
+        if (relatedIds.isEmpty()) {
+            Map<String, Object> empty = new java.util.LinkedHashMap<>();
+            empty.put("total", 0); empty.put("byStatus", Map.of());
+            empty.put("byFormType", Map.of()); empty.put("rejectionRate", 0);
+            empty.put("avgDurationMinutes", 0); empty.put("todayCount", 0);
+            empty.put("weekCount", 0); empty.put("overdueCount", 0);
+            empty.put("formTypeDetail", List.of()); empty.put("applicantDetail", List.of());
+            empty.put("dailyTrend", Map.of());
+            return empty;
+        }
         List<WfInstance> all = instanceMapper.selectList(new LambdaQueryWrapper<WfInstance>()
-            .eq(WfInstance::getTenantId, tenantId));
+            .eq(WfInstance::getTenantId, tenantId)
+            .in(WfInstance::getId, relatedIds));
         long total = all.size();
         Map<String, Long> byStatus = new java.util.LinkedHashMap<>();
         long finished = 0, rejected = 0, durationMinutesSum = 0, durationCount = 0;
@@ -931,12 +953,12 @@ public class ApprovalEngineService {
         applicantDetail.sort((a, b) -> Long.compare((Long) b.get("total"), (Long) a.get("total")));
         if (applicantDetail.size() > 10) applicantDetail = applicantDetail.subList(0, 10);
 
-        // Overdue count: pending instances with nodes past due
+        // Overdue count: pending related instances with nodes past due
         long overdueCount = 0;
         try {
             overdueCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(DISTINCT n.instance_id) FROM wf_node n WHERE n.tenant_id = ? AND n.status = 'APPROVING' AND n.due_at IS NOT NULL AND n.due_at < NOW()",
-                Long.class, tenantId);
+                "SELECT COUNT(DISTINCT n.instance_id) FROM wf_node n WHERE n.tenant_id = ? AND n.approver_id = ? AND n.status = 'APPROVING' AND n.due_at IS NOT NULL AND n.due_at < NOW()",
+                Long.class, tenantId, userId);
         } catch (Exception ignored) { }
 
         Map<String, Object> result = new java.util.LinkedHashMap<>();
@@ -954,6 +976,36 @@ public class ApprovalEngineService {
         result.put("applicantDetail", applicantDetail);
         result.put("dailyTrend", dailyTrend);
         return result;
+    }
+
+    /** 按状态查询与当前用户相关的审批实例(统计卡片点击查看详情) */
+    public List<ApprovalInstanceVO> myRelatedByStatus(Long userId, String status) {
+        Long tenantId = TenantContext.getTenantId();
+        java.util.Set<Long> relatedIds = new java.util.HashSet<>(jdbcTemplate.queryForList(
+            "SELECT DISTINCT id FROM wf_instance WHERE tenant_id = ? AND applicant_id = ?",
+            Long.class, tenantId, userId));
+        relatedIds.addAll(jdbcTemplate.queryForList(
+            "SELECT DISTINCT instance_id FROM wf_node WHERE tenant_id = ? AND approver_id = ?",
+            Long.class, tenantId, userId));
+        relatedIds.addAll(jdbcTemplate.queryForList(
+            "SELECT DISTINCT instance_id FROM wf_record WHERE tenant_id = ? AND target_user_id = ? AND action = 'CC'",
+            Long.class, tenantId, userId));
+        if (relatedIds.isEmpty()) return List.of();
+        LambdaQueryWrapper<WfInstance> qw = new LambdaQueryWrapper<WfInstance>()
+            .eq(WfInstance::getTenantId, tenantId)
+            .in(WfInstance::getId, relatedIds);
+        if (status != null && !"ALL".equals(status)) {
+            if ("TODAY".equals(status)) {
+                qw.ge(WfInstance::getCreatedAt, java.time.LocalDate.now().atStartOfDay());
+            } else if ("WEEK".equals(status)) {
+                qw.ge(WfInstance::getCreatedAt, java.time.LocalDateTime.now().minusDays(7));
+            } else {
+                qw.eq(WfInstance::getStatus, status);
+            }
+        }
+        qw.orderByDesc(WfInstance::getId);
+        List<WfInstance> instances = instanceMapper.selectList(qw);
+        return instances.stream().map(i -> toVO(i, List.of())).toList();
     }
 
     /** 导出租户全部审批实例(管理侧) */

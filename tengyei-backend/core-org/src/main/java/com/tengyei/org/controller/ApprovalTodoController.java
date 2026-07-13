@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -46,9 +47,16 @@ public class ApprovalTodoController {
     }
 
     @GetMapping("/statistics")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:manage','PERM_platform:approval:manage')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_platform:approval:view','PERM_platform:approval:apply')")
     public Result<java.util.Map<String, Object>> statistics() {
         return Result.ok(engineService.statistics());
+    }
+
+    /** 统计卡片点击查看详情:按状态查询与当前用户相关的审批实例 */
+    @GetMapping("/statistics/detail")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_platform:approval:view','PERM_platform:approval:apply')")
+    public Result<List<ApprovalInstanceVO>> statisticsDetail(@RequestParam(required = false) String status) {
+        return Result.ok(engineService.myRelatedByStatus(TenantContext.getUserId(), status));
     }
 
     @GetMapping("/done")
