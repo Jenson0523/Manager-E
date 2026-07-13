@@ -4,6 +4,7 @@ export interface ApprovalNodeVO {
   nodeName: string
   approverId?: number
   approverName?: string
+  approverType?: string
   status: string
   result?: string
   comment?: string
@@ -42,6 +43,7 @@ export interface FormField {
   type: 'text' | 'number' | 'date' | 'textarea' | 'select' | 'file'
   required?: boolean
   options?: string[]
+  unit?: string
 }
 
 export interface ApprovalFlowVO {

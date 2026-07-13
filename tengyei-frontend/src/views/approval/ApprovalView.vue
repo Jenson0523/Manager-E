@@ -8,7 +8,7 @@ import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/utils/responsive'
 import { downloadExcel } from '@/utils/download'
-import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO, FormField } from '@/types/approval'
+import type { ApprovalInstanceVO, ApprovalNodeVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO, FormField } from '@/types/approval'
 
 const auth = useAuthStore()
 const isMobile = useIsMobile()
@@ -102,6 +102,19 @@ const applyCcUserIds = ref<number[]>([])
 function fileFieldName(key: string): string {
   const v = applyValues[key] as { name?: string } | undefined
   return v && typeof v === 'object' ? (v.name ?? '') : ''
+}
+function splitLabelUnit(label: string): { label: string; unit: string } {
+  const match = label.match(/^(.+?)[(（](?:单位[/]?)?([^)）]+)[)）]$/)
+  if (match) return { label: match[1].trim(), unit: match[2].trim() }
+  return { label, unit: '' }
+}
+function fieldLabel(f: FormField): string {
+  if (f.type === 'number') return splitLabelUnit(f.label).label
+  return f.label
+}
+function fieldUnit(f: FormField): string {
+  if (f.type !== 'number') return ''
+  return (f.unit ?? '').trim() || splitLabelUnit(f.label).unit
 }
 async function onFieldUpload(opt: UploadRequestOptions, key: string) {
   const res = await approvalApi.uploadFile(opt.file as File)
@@ -209,8 +222,14 @@ function formatFieldValue(val: unknown, type: string): string {
 }
 
 /* 节点状态标签映射 */
-function nodeStatusLabel(status: string): string {
+function nodeStatusLabel(status: string, approverType?: string): string {
+  if (approverType === 'CC') {
+    return { APPROVED: '已抄送', REJECTED: '抄送失败', APPROVING: '抄送中', WAITING: '待抄送', CANCELED: '已取消' }[status] ?? status
+  }
   return { APPROVED: '已通过', REJECTED: '已驳回', APPROVING: '审批中', WAITING: '等待中', CANCELED: '已取消' }[status] ?? status
+}
+function isCcNode(n: ApprovalNodeVO): boolean {
+  return n.approverType === 'CC'
 }
 
 async function openDetail(id: number) {
@@ -240,7 +259,7 @@ async function cancelInstance() {
 /* 转交 */
 const isMyTurn = computed(() =>
   detail.value?.nodes.some(
-    (n) => n.status === 'APPROVING' && n.approverId === auth.userInfo?.userId
+    (n) => n.status === 'APPROVING' && n.approverType !== 'CC' && n.approverId === auth.userInfo?.userId
   ) ?? false
 )
 const transferDialog = ref(false)
@@ -352,6 +371,36 @@ function nodeTargetName(n: NodeDraft) {
 const nodeConfigDialog = ref(false)
 const editingNodeIndex = ref(0)
 const editingNode = computed(() => flowNodes.value[editingNodeIndex.value])
+
+const editingNodeConditionField = computed({
+  get: () => parseCondition(editingNode.value?.condition).field,
+  set: (v) => updateCondition({ field: v }),
+})
+const editingNodeConditionOp = computed({
+  get: () => parseCondition(editingNode.value?.condition).op,
+  set: (v) => updateCondition({ op: v }),
+})
+const editingNodeConditionValue = computed({
+  get: () => parseCondition(editingNode.value?.condition).value,
+  set: (v) => updateCondition({ value: v }),
+})
+function parseCondition(cond?: string): { field: string; op: string; value: string } {
+  if (!cond) return { field: '', op: '>=', value: '' }
+  const s = cond.trim()
+  // Match {field} op value or field op value or form.field op value
+  const m = s.match(/^\{?(?:form\.)?(\w+)\}?\s*(>=|<=|==|!=|>|<)\s*(.+)$/)
+  if (m) return { field: m[1], op: m[2], value: m[3] }
+  return { field: '', op: '>=', value: '' }
+}
+function updateCondition(part: Partial<{ field: string; op: string; value: string }>) {
+  const cur = parseCondition(editingNode.value?.condition)
+  const next = { ...cur, ...part }
+  if (!next.field || !next.op || next.value === '' || next.value == null) {
+    editingNode.value.condition = ''
+  } else {
+    editingNode.value.condition = `{${next.field}} ${next.op} ${next.value}`
+  }
+}
 function openNodeConfig(i: number) {
   editingNodeIndex.value = i
   // Ensure CC nodes have proper defaults
@@ -394,6 +443,7 @@ interface FieldDraft {
   type: string
   required: boolean
   optionsText: string
+  unit: string
 }
 const FIELD_TYPES = [
   { value: 'text', label: '单行文本' },
@@ -434,7 +484,7 @@ async function loadFlowRefs() {
   }
 }
 function blankField(): FieldDraft {
-  return { key: '', label: '', type: 'text', required: false, optionsText: '' }
+  return { key: '', label: '', type: 'text', required: false, optionsText: '', unit: '' }
 }
 function openFlowCreate() {
   flowForm.formType = ''
@@ -471,6 +521,7 @@ function openFlowEdit(f: ApprovalFlowVO) {
     type: x.type,
     required: !!x.required,
     optionsText: (x.options ?? []).join(','),
+    unit: x.unit ?? '',
   }))
   loadFlowRefs()
   flowDialog.value = true
@@ -493,6 +544,7 @@ async function submitFlow() {
         type: f.type,
         required: f.required || undefined,
         options: f.type === 'select' ? f.optionsText.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+        unit: f.type === 'number' && f.unit?.trim() ? f.unit.trim() : undefined,
       })))
     : undefined
   const configJson = JSON.stringify({
@@ -791,10 +843,13 @@ async function refreshStats() {
           </el-select>
         </el-form-item>
         <template v-if="applyFields.length">
-          <el-form-item v-for="f in applyFields" :key="f.key" :label="f.label" :required="f.required">
+          <el-form-item v-for="f in applyFields" :key="f.key" :label="fieldLabel(f)" :required="f.required">
             <el-input v-if="f.type === 'text'" v-model="applyValues[f.key] as string" />
             <el-input v-else-if="f.type === 'textarea'" v-model="applyValues[f.key] as string" type="textarea" :rows="3" />
-            <el-input-number v-else-if="f.type === 'number'" v-model="applyValues[f.key] as number" style="width: 100%" />
+            <div v-else-if="f.type === 'number'" class="number-with-unit">
+              <el-input-number v-model="applyValues[f.key] as number" style="flex: 1" :controls-position="'right'" />
+              <span v-if="fieldUnit(f)" class="field-unit">{{ fieldUnit(f) }}</span>
+            </div>
             <el-date-picker v-else-if="f.type === 'date'" v-model="applyValues[f.key] as string" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
             <el-select v-else-if="f.type === 'select'" v-model="applyValues[f.key] as string" style="width: 100%">
               <el-option v-for="o in f.options ?? []" :key="o" :label="o" :value="o" />
@@ -863,10 +918,11 @@ async function refreshStats() {
           >
             <div class="timeline-node">
               <span class="timeline-node-name">{{ n.nodeName }}</span>
-              <el-tag size="small" :type="statusTag(n.status)">{{ nodeStatusLabel(n.status) }}</el-tag>
+              <el-tag size="small" :type="statusTag(n.status)">{{ nodeStatusLabel(n.status, n.approverType) }}</el-tag>
             </div>
             <div class="timeline-node-info">
-              <span v-if="n.approverName">审批人: {{ n.approverName }}</span>
+              <span v-if="isCcNode(n)">抄送对象: {{ n.approverName || '待流程到达后通知' }}</span>
+              <span v-else-if="n.approverName">审批人: {{ n.approverName }}</span>
               <span v-else-if="n.result === 'AUTO'">系统自动通过</span>
               <span v-else>待分配审批人</span>
             </div>
@@ -1024,6 +1080,7 @@ async function refreshStats() {
             <el-select v-model="f.type" style="width: 110px">
               <el-option v-for="t in FIELD_TYPES" :key="t.value" :label="t.label" :value="t.value" />
             </el-select>
+            <el-input v-if="f.type === 'number'" v-model="f.unit" placeholder="单位,如 天" style="width: 90px" />
             <el-checkbox v-model="f.required">必填</el-checkbox>
             <el-input v-if="f.type === 'select'" v-model="f.optionsText" placeholder="选项,逗号分隔" style="width: 150px" />
             <el-button link type="danger" @click="flowFields.splice(i, 1)">删除</el-button>
@@ -1092,7 +1149,20 @@ async function refreshStats() {
           </el-select>
         </el-form-item>
         <el-form-item label="生效条件">
-          <el-input v-model="editingNode.condition" placeholder="可空,如 form.days >= 3" />
+          <div class="condition-row">
+            <el-select v-model="editingNodeConditionField" placeholder="选择字段" clearable style="width: 120px">
+              <el-option v-for="f in flowFields.filter((x) => x.key)" :key="f.key" :label="f.label || f.key" :value="f.key" />
+            </el-select>
+            <el-select v-model="editingNodeConditionOp" placeholder="运算符" style="width: 90px">
+              <el-option label=">" value=">" />
+              <el-option label=">=" value=">=" />
+              <el-option label="=" value="==" />
+              <el-option label="!=" value="!=" />
+              <el-option label="<" value="<" />
+              <el-option label="<=" value="<=" />
+            </el-select>
+            <el-input v-model="editingNodeConditionValue" placeholder="值,如 2" style="width: 120px" />
+          </div>
           <div class="form-tip">满足条件时该节点生效,否则自动跳过</div>
         </el-form-item>
         <el-form-item label="超时提醒">
@@ -1138,6 +1208,22 @@ async function refreshStats() {
   margin-left: 10px;
   font-size: 13px;
   color: #409eff;
+}
+.number-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.field-unit {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+}
+.condition-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 .timeline-node {
   display: flex;

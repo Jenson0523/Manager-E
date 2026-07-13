@@ -37,6 +37,9 @@ import java.util.regex.Pattern;
 public class ApprovalEngineService {
 
     private static final Pattern CONDITION_PATTERN =
+        Pattern.compile("^\\{?(?:form\\.)?(\\w+)\\}?\\s*(>=|<=|==|!=|>|<)\\s*(.+)$");
+
+    private static final Pattern OLD_CONDITION_PATTERN =
         Pattern.compile("^form\\.(\\w+)\\s*(>=|<=|==|!=|>|<)\\s*(.+)$");
 
     private final WfDefinitionMapper definitionMapper;
@@ -630,7 +633,7 @@ public class ApprovalEngineService {
     public List<ApprovalInstanceVO> myTodo(Long userId) {
         Long tenantId = TenantContext.getTenantId();
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-            "SELECT instance_id, due_at FROM wf_node WHERE tenant_id = ? AND approver_id = ? AND status = 'APPROVING'",
+            "SELECT instance_id, due_at FROM wf_node WHERE tenant_id = ? AND approver_id = ? AND approver_type != 'CC' AND status = 'APPROVING'",
             tenantId, userId);
         if (rows.isEmpty()) return List.of();
         Map<Long, LocalDateTime> dueMap = new java.util.HashMap<>();
@@ -658,7 +661,7 @@ public class ApprovalEngineService {
         Long tenantId = TenantContext.getTenantId();
         List<Long> instanceIds = jdbcTemplate.queryForList(
             "SELECT DISTINCT instance_id FROM wf_node WHERE tenant_id = ? AND approver_id = ? " +
-            "AND status IN ('APPROVED','REJECTED') AND action_by IS NOT NULL",
+            "AND approver_type != 'CC' AND status IN ('APPROVED','REJECTED') AND action_by IS NOT NULL",
             Long.class, tenantId, userId);
         return listByIds(instanceIds);
     }
@@ -1092,7 +1095,7 @@ public class ApprovalEngineService {
                 .approverId(n.getApproverId()).approverName(n.getApproverName())
                 .status(n.getStatus()).result(n.getResult())
                 .comment(n.getComment()).actionAt(n.getActionAt()).dueAt(n.getDueAt())
-                .rejectPolicy(n.getRejectPolicy()).build())
+                .rejectPolicy(n.getRejectPolicy()).approverType(n.getApproverType()).build())
                 .toList())
             .build();
     }
@@ -1130,9 +1133,15 @@ public class ApprovalEngineService {
 
     private boolean evalCondition(String condition, Map<String, Object> formData) {
         if (condition == null || condition.isBlank()) return true;
-        Matcher m = CONDITION_PATTERN.matcher(condition.trim());
-        if (!m.matches()) return true;
-        Object lhsObj = formData == null ? null : formData.get(m.group(1));
+        String trimmed = condition.trim();
+        Matcher m = CONDITION_PATTERN.matcher(trimmed);
+        if (!m.matches()) {
+            // Try legacy form.field format for backward compatibility
+            m = OLD_CONDITION_PATTERN.matcher(trimmed);
+            if (!m.matches()) return false;
+        }
+        String fieldKey = m.group(1);
+        Object lhsObj = formData == null ? null : formData.get(fieldKey);
         if (lhsObj == null) return false;
         try {
             double lhs = Double.parseDouble(lhsObj.toString());
@@ -1144,10 +1153,10 @@ public class ApprovalEngineService {
                 case "<=" -> lhs <= rhs;
                 case "==" -> lhs == rhs;
                 case "!=" -> lhs != rhs;
-                default -> true;
+                default -> false;
             };
         } catch (NumberFormatException e) {
-            return true;
+            return false;
         }
     }
 

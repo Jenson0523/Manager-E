@@ -42,5 +42,7 @@ public class ApprovalInstanceVO {
         private LocalDateTime actionAt;
         private LocalDateTime dueAt;
         private String rejectPolicy;
+        /** 节点类型:CC=抄送节点,其他为审批节点 */
+        private String approverType;
     }
 }
