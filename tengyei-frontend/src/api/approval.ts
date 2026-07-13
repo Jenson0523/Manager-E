@@ -13,6 +13,12 @@ export const approvalApi = {
   todo: () => request.get<never, ApprovalInstanceVO[]>('/v1/approval/todo'),
   my: () => request.get<never, ApprovalInstanceVO[]>('/v1/approval/my'),
   done: () => request.get<never, ApprovalInstanceVO[]>('/v1/approval/done'),
+  cc: () => request.get<never, ApprovalInstanceVO[]>('/v1/approval/cc'),
+  uploadFile: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return request.post<never, { url: string; name: string }>('/v1/upload/file', fd)
+  },
   detail: (id: number) => request.get<never, ApprovalInstanceVO>(`/v1/approval/instances/${id}`),
   apply: (data: ApprovalApplyDTO) =>
     request.post<never, IdResult>('/v1/approval/instances', data),

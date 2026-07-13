@@ -137,6 +137,16 @@ async function toggle(row: AnnouncementVO) {
 
 const detailRef = ref<InstanceType<typeof AnnouncementDetailDialog>>()
 
+/* 已读名单 */
+const readsDialog = ref(false)
+const readsList = ref<{ userName: string; readAt: string }[]>([])
+const readsTitle = ref('')
+async function openReads(row: AnnouncementVO) {
+  readsTitle.value = row.title
+  readsList.value = await announcementApi.reads(row.id)
+  readsDialog.value = true
+}
+
 onMounted(fetchList)
 </script>
 
@@ -173,6 +183,13 @@ onMounted(fetchList)
             : '—' }}
         </template>
       </el-table-column>
+      <el-table-column label="已读" width="80">
+        <template #default="{ row }">
+          <el-link type="primary" :underline="false" @click="openReads(row as AnnouncementVO)">
+            {{ (row as AnnouncementVO).readCount ?? 0 }}人
+          </el-link>
+        </template>
+      </el-table-column>
       <el-table-column prop="startAt" label="开始" width="160" />
       <el-table-column prop="endAt" label="结束" width="160" />
       <el-table-column label="状态" width="80">
@@ -194,6 +211,20 @@ onMounted(fetchList)
     </el-table>
 
     <AnnouncementDetailDialog ref="detailRef" />
+
+    <!-- 已读名单 -->
+    <el-dialog v-model="readsDialog" :title="`已读名单 — ${readsTitle}`" width="420px">
+      <el-table :data="readsList" size="small" max-height="360">
+        <el-table-column prop="userName" label="姓名" width="140" />
+        <el-table-column label="阅读时间">
+          <template #default="{ row }">{{ String(row.readAt).replace('T', ' ') }}</template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!readsList.length" description="还没有人查看" :image-size="60" />
+      <template #footer>
+        <el-button type="primary" @click="readsDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="dialog" :title="form.id ? '编辑通知' : '发布通知'" width="520px" :fullscreen="isMobile">
       <el-form label-width="90px">

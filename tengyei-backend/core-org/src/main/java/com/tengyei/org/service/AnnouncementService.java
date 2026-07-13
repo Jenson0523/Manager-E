@@ -128,6 +128,11 @@ public class AnnouncementService {
                         && Arrays.asList(a.getTargetIds().split(",")).contains(String.valueOf(tenantId)))));
         if (!manager && !recipient) throw new BusinessException(403, "无权查看该通知");
 
+        // 记已读(幂等):打开详情即视为已读
+        jdbcTemplate.update(
+            "INSERT IGNORE INTO sys_announcement_read (announcement_id, user_id, user_name, read_at) VALUES (?, ?, ?, NOW())",
+            id, userId, TenantContext.getUserName());
+
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", a.getId());
         m.put("title", a.getTitle());
@@ -167,11 +172,31 @@ public class AnnouncementService {
                 || "PERM_platform:announcement:disable".equals(x));
     }
 
-    /** 管理列表:本租户发布的全部公告 */
+    /** 管理列表:本租户发布的全部公告(带已读人数) */
     public List<SysAnnouncement> list() {
-        return announcementMapper.selectList(new LambdaQueryWrapper<SysAnnouncement>()
+        List<SysAnnouncement> rows = announcementMapper.selectList(new LambdaQueryWrapper<SysAnnouncement>()
             .eq(SysAnnouncement::getTenantId, TenantContext.getTenantId())
             .orderByDesc(SysAnnouncement::getId));
+        if (!rows.isEmpty()) {
+            Map<Long, Long> counts = new LinkedHashMap<>();
+            jdbcTemplate.queryForList(
+                    "SELECT announcement_id, COUNT(*) AS c FROM sys_announcement_read GROUP BY announcement_id")
+                .forEach(r -> counts.put(((Number) r.get("announcement_id")).longValue(),
+                    ((Number) r.get("c")).longValue()));
+            rows.forEach(a -> a.setReadCount(counts.getOrDefault(a.getId(), 0L)));
+        }
+        return rows;
+    }
+
+    /** 已读名单(发布方管理者可看) */
+    public List<Map<String, Object>> reads(Long id) {
+        SysAnnouncement a = announcementMapper.selectById(id);
+        if (a == null || !a.getTenantId().equals(TenantContext.getTenantId())) {
+            throw new BusinessException(404, "通知不存在");
+        }
+        return jdbcTemplate.queryForList(
+            "SELECT user_name AS userName, read_at AS readAt FROM sys_announcement_read " +
+            "WHERE announcement_id = ? ORDER BY read_at DESC", id);
     }
 
     public Long save(AnnouncementSaveDTO dto, String operatorName) {

@@ -99,6 +99,7 @@ public class ApprovalEngineService {
         }
 
         writeRecord(instance.getId(), null, applicantId, applicantName, "APPLY", null, null, "PENDING");
+        saveCc(instance, dto.getCcUserIds(), applicantId, applicantName);
         advance(instance, applicantId, true);
         return instance.getId();
     }
@@ -510,7 +511,8 @@ public class ApprovalEngineService {
         Long me = TenantContext.getUserId();
         boolean related = instance.getApplicantId().equals(me)
             || nodes.stream().anyMatch(n -> !"WAITING".equals(n.getStatus())
-                && (me.equals(n.getApproverId()) || me.equals(n.getActionBy())));
+                && (me.equals(n.getApproverId()) || me.equals(n.getActionBy())))
+            || isCcTarget(instanceId, me);
         if (!related && !hasManageAuthority()) {
             throw new BusinessException(403, "无权查看该审批");
         }
@@ -582,6 +584,47 @@ public class ApprovalEngineService {
             "AND status IN ('APPROVED','REJECTED') AND action_by IS NOT NULL",
             Long.class, tenantId, userId);
         return listByIds(instanceIds);
+    }
+
+    /** 抄送:每人一条 CC 记录(知会,不占审批环节),站内通知 */
+    private void saveCc(WfInstance instance, List<Long> ccUserIds, Long operatorId, String operatorName) {
+        if (ccUserIds == null || ccUserIds.isEmpty()) return;
+        Long tenantId = instance.getTenantId();
+        for (Long uid : new java.util.LinkedHashSet<>(ccUserIds)) {
+            if (uid == null || uid.equals(operatorId)) continue;
+            List<String> names = jdbcTemplate.queryForList(
+                "SELECT real_name FROM `user` WHERE id = ? AND tenant_id = ? AND is_deleted = 0 AND status = 1",
+                String.class, uid, tenantId);
+            if (names.isEmpty()) continue;
+            WfRecord r = new WfRecord();
+            r.setTenantId(tenantId);
+            r.setInstanceId(instance.getId());
+            r.setOperatorId(operatorId);
+            r.setOperatorName(operatorName);
+            r.setAction("CC");
+            r.setTargetUserId(uid);
+            r.setBeforeStatus("PENDING");
+            r.setAfterStatus("PENDING");
+            recordMapper.insert(r);
+            noticeService.send(tenantId, uid, "APPROVAL_CC", "有一条审批抄送给你",
+                operatorName + " 发起的审批 " + instance.getInstanceNo() + " 抄送给你查阅",
+                "approval", instance.getId());
+        }
+    }
+
+    /** 抄送我的审批列表 */
+    public List<ApprovalInstanceVO> myCc(Long userId) {
+        List<Long> instanceIds = jdbcTemplate.queryForList(
+            "SELECT DISTINCT instance_id FROM wf_record WHERE tenant_id = ? AND action = 'CC' AND target_user_id = ?",
+            Long.class, TenantContext.getTenantId(), userId);
+        return listByIds(instanceIds);
+    }
+
+    private boolean isCcTarget(Long instanceId, Long userId) {
+        Long n = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM wf_record WHERE instance_id = ? AND action = 'CC' AND target_user_id = ?",
+            Long.class, instanceId, userId);
+        return n != null && n > 0;
     }
 
     private List<ApprovalInstanceVO> listByIds(List<Long> ids) {
@@ -728,6 +771,35 @@ public class ApprovalEngineService {
         result.put("rejectionRate", finished == 0 ? 0 : Math.round(rejected * 1000.0 / finished) / 10.0);
         result.put("avgDurationMinutes", durationCount == 0 ? 0 : durationMinutesSum / durationCount);
         return result;
+    }
+
+    /** 导出租户全部审批实例(管理侧) */
+    public List<com.tengyei.org.dto.ApprovalExportVO> export() {
+        List<WfInstance> all = instanceMapper.selectList(new LambdaQueryWrapper<WfInstance>()
+            .eq(WfInstance::getTenantId, TenantContext.getTenantId())
+            .orderByDesc(WfInstance::getId));
+        Map<String, String> nameMap = new java.util.HashMap<>();
+        jdbcTemplate.queryForList(
+                "SELECT form_type, form_name FROM wf_definition WHERE tenant_id = ?",
+                TenantContext.getTenantId())
+            .forEach(r -> nameMap.put((String) r.get("form_type"), (String) r.get("form_name")));
+        Map<String, String> statusLabel = Map.of(
+            "PENDING", "审批中", "APPROVED", "已通过", "REJECTED", "已驳回",
+            "CANCELED", "已撤销", "RETURNED", "已退回");
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        return all.stream().map(i -> {
+            var vo = new com.tengyei.org.dto.ApprovalExportVO();
+            vo.setInstanceNo(i.getInstanceNo());
+            vo.setFormName(nameMap.getOrDefault(i.getFormType(), i.getFormType()));
+            vo.setApplicantName(i.getApplicantName());
+            vo.setStatus(statusLabel.getOrDefault(i.getStatus(), i.getStatus()));
+            vo.setCurrentNode(i.getCurrentNode());
+            vo.setCreatedAt(i.getCreatedAt() != null ? i.getCreatedAt().format(fmt) : null);
+            boolean finished = !"PENDING".equals(i.getStatus()) && !"RETURNED".equals(i.getStatus());
+            vo.setFinishedAt(finished && i.getUpdatedAt() != null ? i.getUpdatedAt().format(fmt) : null);
+            vo.setFormData(i.getFormData());
+            return vo;
+        }).toList();
     }
 
     private ApprovalInstanceVO toVO(WfInstance i, List<WfNode> nodes) {

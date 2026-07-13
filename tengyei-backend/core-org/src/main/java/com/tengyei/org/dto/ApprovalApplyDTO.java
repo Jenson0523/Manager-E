@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -12,4 +13,6 @@ public class ApprovalApplyDTO {
     private String formType;
     @NotNull(message = "表单数据不能为空")
     private Map<String, Object> formData;
+    /** 抄送人(可空):知会即可,不占审批环节 */
+    private List<Long> ccUserIds;
 }

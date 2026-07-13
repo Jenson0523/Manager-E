@@ -25,4 +25,7 @@ public class SysAnnouncement extends BaseEntity {
     private Integer status;
     private String createdBy;
     private Long createdById;
+    /** 已读人数(查询时填充,不落库) */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Long readCount;
 }

@@ -23,6 +23,7 @@ export interface AnnouncementVO {
   status: number
   createdBy?: string
   createdAt: string
+  readCount?: number
 }
 
 export interface AnnouncementSaveDTO {
@@ -58,6 +59,8 @@ export const announcementApi = {
   active: () => request.get<never, BannerVO[]>('/v1/announcements/active'),
   list: () => request.get<never, AnnouncementVO[]>('/v1/announcements'),
   detail: (id: number) => request.get<never, AnnouncementDetailVO>(`/v1/announcements/${id}`),
+  reads: (id: number) =>
+    request.get<never, { userName: string; readAt: string }[]>(`/v1/announcements/${id}/reads`),
   save: (data: AnnouncementSaveDTO) =>
     request.post<never, { id: number }>('/v1/announcements', data),
   setStatus: (id: number, status: number) =>

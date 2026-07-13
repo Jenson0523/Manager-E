@@ -40,6 +40,14 @@ public class AnnouncementController {
         return Result.ok(announcementService.detail(id, TenantContext.getUserId()));
     }
 
+    /** 已读名单(管理侧) */
+    @GetMapping("/{id}/reads")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:view','PERM_announcement:manage','PERM_announcement:disable'," +
+        "'PERM_platform:announcement:view','PERM_platform:announcement:manage','PERM_platform:announcement:disable')")
+    public Result<List<Map<String, Object>>> reads(@PathVariable Long id) {
+        return Result.ok(announcementService.reads(id));
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_announcement:manage','PERM_platform:announcement:manage')")
     @Auditable(module = "公告", actionType = "CREATE", description = "保存横幅公告")

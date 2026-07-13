@@ -33,12 +33,13 @@ export interface ApprovalInstanceVO {
 export interface ApprovalApplyDTO {
   formType: string
   formData: Record<string, unknown>
+  ccUserIds?: number[]
 }
 
 export interface FormField {
   key: string
   label: string
-  type: 'text' | 'number' | 'date' | 'textarea' | 'select'
+  type: 'text' | 'number' | 'date' | 'textarea' | 'select' | 'file'
   required?: boolean
   options?: string[]
 }

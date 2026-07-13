@@ -126,6 +126,67 @@ class ApprovalDeepeningTest {
     }
 
     @Test
+    void attachmentUpload_whitelistAndSuccess() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String admin = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        var bad = new org.springframework.mock.web.MockMultipartFile(
+            "file", "evil.exe", "application/octet-stream", new byte[]{1, 2, 3});
+        mockMvc.perform(multipart("/api/v1/upload/file").file(bad)
+                .header("Authorization", "Bearer " + admin))
+                .andExpect(jsonPath("$.code").value(422));
+        var ok = new org.springframework.mock.web.MockMultipartFile(
+            "file", "report.pdf", "application/pdf", new byte[]{37, 80, 68, 70});
+        mockMvc.perform(multipart("/api/v1/upload/file").file(ok)
+                .header("Authorization", "Bearer " + admin))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.name").value("report.pdf"));
+    }
+
+    @Test
+    void ccUsers_getNoticed_canView_andListedInCcTab() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String admin = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        long ccUser = seedSecondUser(seeded.tenantId(), seeded.roleId(), "cc_" + seeded.tenantId());
+        String ccToken = OrgTestSupport.login(mockMvc, objectMapper, "cc_" + seeded.tenantId());
+
+        createFlow(admin, "ccf", seeded.adminUserId(), seeded.adminUserId(), null);
+        String body = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"ccf\",\"formData\":{},\"ccUserIds\":[" + ccUser + "]}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        long id = objectMapper.readTree(body).get("data").get("id").asLong();
+
+        // 抄送人:在"抄送我"列表 + 可看详情 + 收到站内通知
+        mockMvc.perform(get("/api/v1/approval/cc")
+                .header("Authorization", "Bearer " + ccToken))
+                .andExpect(jsonPath("$.data[0].id").value(id));
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + ccToken))
+                .andExpect(jsonPath("$.code").value(0));
+        Long notices = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM sys_notice WHERE user_id = ? AND type = 'APPROVAL_CC'",
+            Long.class, ccUser);
+        assertEquals(1L, notices);
+
+        // 非抄送人的第三者(仅 view 权限,非管理者)不可看详情
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, is_deleted, created_at, updated_at) " +
+            "VALUES (?, '仅查看', 'view_only', 'self', 0, 1, 0, NOW(), NOW())", seeded.tenantId());
+        long viewRoleId = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id = ? AND code = 'view_only'", Long.class, seeded.tenantId());
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id, permission_id, created_at) " +
+            "SELECT ?, id, NOW() FROM permission WHERE code = 'approval:view'", viewRoleId);
+        long outsider = seedSecondUser(seeded.tenantId(), viewRoleId, "out_" + seeded.tenantId());
+        String outToken = OrgTestSupport.login(mockMvc, objectMapper, "out_" + seeded.tenantId());
+        mockMvc.perform(get("/api/v1/approval/instances/" + id)
+                .header("Authorization", "Bearer " + outToken))
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
     void rejectToInitiator_thenResubmit_flowsAgain() throws Exception {
         var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
         String admin = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());

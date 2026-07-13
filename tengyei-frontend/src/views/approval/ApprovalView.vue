@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { approvalApi } from '@/api/approval'
 import { roleApi } from '@/api/rbac'
 import { userApi } from '@/api/user'
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/utils/responsive'
+import { downloadExcel } from '@/utils/download'
 import type { ApprovalInstanceVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO, FormField } from '@/types/approval'
 
 const auth = useAuthStore()
@@ -40,6 +41,7 @@ const loading = ref(false)
 const todoList = ref<ApprovalInstanceVO[]>([])
 const myList = ref<ApprovalInstanceVO[]>([])
 const doneList = ref<ApprovalInstanceVO[]>([])
+const ccList = ref<ApprovalInstanceVO[]>([])
 const flowList = ref<ApprovalFlowVO[]>([])
 const stats = ref<ApprovalStatisticsVO | null>(null)
 
@@ -49,6 +51,7 @@ async function loadTab(tab: string) {
     if (tab === 'todo') todoList.value = await approvalApi.todo()
     else if (tab === 'my') myList.value = await approvalApi.my()
     else if (tab === 'done') doneList.value = await approvalApi.done()
+    else if (tab === 'cc') ccList.value = await approvalApi.cc()
     else if (tab === 'flows') flowList.value = await approvalApi.flows()
     else if (tab === 'stats') stats.value = await approvalApi.statistics()
   } finally {
@@ -91,12 +94,24 @@ function onApplyTypeChange() {
   Object.keys(applyValues).forEach((k) => delete applyValues[k])
   applyJsonFallback.value = '{}'
 }
+const applyCcUserIds = ref<number[]>([])
+function fileFieldName(key: string): string {
+  const v = applyValues[key] as { name?: string } | undefined
+  return v && typeof v === 'object' ? (v.name ?? '') : ''
+}
+async function onFieldUpload(opt: UploadRequestOptions, key: string) {
+  const res = await approvalApi.uploadFile(opt.file as File)
+  applyValues[key] = res
+  ElMessage.success('附件已上传')
+}
 async function openApply() {
   applyForms.value = await approvalApi.forms()
   if (!applyForms.value.length) {
     ElMessage.warning('暂无可用审批流程,请联系管理员配置')
     return
   }
+  if (!userOptions.value.length) await loadFlowRefs()
+  applyCcUserIds.value = []
   resubmitId.value = null
   applyFormType.value = applyForms.value[0].formType
   onApplyTypeChange()
@@ -109,7 +124,8 @@ async function submitApply() {
   if (applyFields.value.length) {
     for (const f of applyFields.value) {
       const v = applyValues[f.key]
-      if (f.required && (v === undefined || v === null || v === '')) {
+      if (f.required && (v === undefined || v === null || v === ''
+          || (f.type === 'file' && !(v as { url?: string })?.url))) {
         ElMessage.error(`请填写「${f.label}」`)
         return
       }
@@ -127,13 +143,17 @@ async function submitApply() {
     await approvalApi.resubmit(resubmitId.value, formData)
     ElMessage.success('已重新提交')
   } else {
-    await approvalApi.apply({ formType: applyFormType.value, formData })
+    await approvalApi.apply({ formType: applyFormType.value, formData, ccUserIds: applyCcUserIds.value })
     ElMessage.success('已提交审批')
   }
   resubmitId.value = null
   applyDialog.value = false
   detailDialog.value = false
   loadTab('my')
+}
+async function exportApprovals() {
+  await downloadExcel('/v1/approval/export', {}, `审批记录_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  ElMessage.success('导出成功')
 }
 async function openResubmit() {
   if (!detail.value) return
@@ -163,15 +183,19 @@ const detailFormFields = computed(() => {
     try {
       const fields = JSON.parse(detail.value.fieldsJson) as FormField[]
       if (Array.isArray(fields) && fields.length) {
-        return fields.map(f => ({
-          label: f.label,
-          value: formatFieldValue(data[f.key], f.type),
-        })).filter(f => f.value !== '' && f.value !== undefined && f.value !== null)
+        return fields.map(f => {
+          const raw = data[f.key]
+          if (f.type === 'file' && raw && typeof raw === 'object') {
+            const o = raw as { url?: string; name?: string }
+            return { label: f.label, value: o.name ?? '附件', url: o.url }
+          }
+          return { label: f.label, value: formatFieldValue(raw, f.type), url: undefined as string | undefined }
+        }).filter(f => f.value !== '' && f.value !== undefined && f.value !== null)
       }
     } catch { /* fall through to raw */ }
   }
   // 降级:无字段定义时直接按 key->value 展示
-  return Object.entries(data).map(([k, v]) => ({ label: k, value: String(v) }))
+  return Object.entries(data).map(([k, v]) => ({ label: k, value: String(v), url: undefined as string | undefined }))
 })
 function formatFieldValue(val: unknown, type: string): string {
   if (val === null || val === undefined) return ''
@@ -351,6 +375,7 @@ const FIELD_TYPES = [
   { value: 'number', label: '数字' },
   { value: 'date', label: '日期' },
   { value: 'select', label: '下拉选择' },
+  { value: 'file', label: '附件' },
 ]
 const flowDialog = ref(false)
 const flowForm = reactive({ formType: '', formName: '', processKey: '' })
@@ -574,7 +599,46 @@ onMounted(() => loadTab('todo'))
         </el-table>
       </el-tab-pane>
 
+      <el-tab-pane label="抄送我" name="cc">
+        <div v-if="isMobile" v-loading="loading" class="m-list">
+          <div v-for="row in ccList" :key="row.id" class="m-card" @click="openDetail(row.id)">
+            <div class="m-card-head">
+              <span class="m-card-title">{{ row.formName || row.formType }}</span>
+              <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+            </div>
+            <div class="m-card-line">{{ row.instanceNo }}</div>
+            <div class="m-card-line">申请人:{{ row.applicantName }} · {{ row.createdAt }}</div>
+          </div>
+          <el-empty v-if="!ccList.length" description="暂无抄送" :image-size="60" />
+        </div>
+        <el-table v-else v-loading="loading" :data="ccList" stripe>
+          <el-table-column prop="instanceNo" label="单号" width="180" />
+          <el-table-column label="表单类型" width="140">
+            <template #default="{ row }">
+              {{ (row as ApprovalInstanceVO).formName || (row as ApprovalInstanceVO).formType }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="applicantName" label="申请人" width="120" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="statusTag((row as ApprovalInstanceVO).status)">
+                {{ statusLabel((row as ApprovalInstanceVO).status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="申请时间" width="180" />
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openDetail((row as ApprovalInstanceVO).id)">查看</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
       <el-tab-pane v-if="canManage" label="统计" name="stats">
+        <div style="margin-bottom: 12px">
+          <el-button size="small" @click="exportApprovals">导出审批记录</el-button>
+        </div>
         <div v-if="stats" v-loading="loading" class="stats-grid">
           <div class="stat-card"><div class="stat-label">审批总数</div><div class="stat-value">{{ stats.total }}</div></div>
           <div class="stat-card"><div class="stat-label">审批中</div><div class="stat-value">{{ stats.byStatus.PENDING ?? 0 }}</div></div>
@@ -638,10 +702,28 @@ onMounted(() => loadTab('todo'))
             <el-select v-else-if="f.type === 'select'" v-model="applyValues[f.key] as string" style="width: 100%">
               <el-option v-for="o in f.options ?? []" :key="o" :label="o" :value="o" />
             </el-select>
+            <template v-else-if="f.type === 'file'">
+              <el-upload :show-file-list="false" :http-request="(opt: UploadRequestOptions) => onFieldUpload(opt, f.key)"
+                accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar">
+                <el-button size="small">{{ fileFieldName(f.key) ? '重新上传' : '上传附件' }}</el-button>
+              </el-upload>
+              <span v-if="fileFieldName(f.key)" class="upload-file-name">
+                {{ fileFieldName(f.key) }}
+                <el-button link type="danger" size="small" @click="delete applyValues[f.key]">移除</el-button>
+              </span>
+            </template>
           </el-form-item>
         </template>
         <el-form-item v-else label="表单数据">
           <el-input v-model="applyJsonFallback" type="textarea" :rows="6" placeholder="该流程未定义表单字段,请填写 JSON" />
+        </el-form-item>
+        <el-form-item v-if="resubmitId == null" label="抄送人">
+          <el-select v-model="applyCcUserIds" multiple filterable clearable placeholder="可选,知会相关人(不占审批环节)" style="width: 100%">
+            <el-option
+              v-for="u in userOptions.filter((o) => o.id !== auth.userInfo?.userId)"
+              :key="u.id" :label="u.name" :value="u.id"
+            />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -668,7 +750,8 @@ onMounted(() => loadTab('todo'))
         <p style="font-weight: 600; margin-top: 16px; margin-bottom: 8px">表单数据</p>
         <el-descriptions v-if="detailFormFields.length" :column="1" border size="small">
           <el-descriptions-item v-for="f in detailFormFields" :key="f.label" :label="f.label">
-            {{ f.value }}
+            <el-link v-if="f.url" :href="f.url" target="_blank" type="primary">{{ f.value }}</el-link>
+            <template v-else>{{ f.value }}</template>
           </el-descriptions-item>
         </el-descriptions>
         <pre v-else class="form-data">{{ detail.formData }}</pre>
@@ -934,6 +1017,11 @@ onMounted(() => loadTab('todo'))
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.8;
+}
+.upload-file-name {
+  margin-left: 10px;
+  font-size: 13px;
+  color: #409eff;
 }
 .timeline-node {
   display: flex;

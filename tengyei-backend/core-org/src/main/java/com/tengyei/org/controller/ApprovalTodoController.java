@@ -57,6 +57,30 @@ public class ApprovalTodoController {
         return Result.ok(engineService.myDone(TenantContext.getUserId()));
     }
 
+    /** 抄送我的 */
+    @GetMapping("/cc")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
+    public Result<List<ApprovalInstanceVO>> cc() {
+        return Result.ok(engineService.myCc(TenantContext.getUserId()));
+    }
+
+    /** 审批数据导出(管理侧) */
+    @GetMapping("/export")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:manage','PERM_platform:approval:manage')")
+    public void export(jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        var data = engineService.export();
+        String fileName = java.net.URLEncoder.encode(
+                "审批记录_" + java.time.LocalDate.now(), java.nio.charset.StandardCharsets.UTF_8)
+            .replace("+", "%20");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''" + fileName + ".xlsx");
+        response.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+        com.alibaba.excel.EasyExcel.write(response.getOutputStream(), com.tengyei.org.dto.ApprovalExportVO.class)
+            .sheet("审批记录")
+            .doWrite(data);
+    }
+
     @GetMapping("/delegate")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:delegate','PERM_platform:approval:delegate')")
     public Result<WfDelegate> delegateGet() {

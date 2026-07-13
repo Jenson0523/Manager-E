@@ -69,4 +69,30 @@ public class UploadController {
             return Result.fail(500, "文件上传失败");
         }
     }
+
+    /** 审批表单附件:常见文档/图片/压缩包,≤10MB,返回 {url, name} */
+    @PostMapping("/upload/file")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")
+    public Result<java.util.Map<String, String>> uploadFile(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) return Result.fail(422, "上传文件不能为空");
+        String originalName = file.getOriginalFilename();
+        if (originalName == null || !originalName.contains(".")) return Result.fail(422, "文件名无效");
+        String ext = originalName.substring(originalName.lastIndexOf('.') + 1).toLowerCase();
+        if (!ext.matches("jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar")) {
+            return Result.fail(422, "不支持的文件格式:" + ext);
+        }
+        if (file.getSize() > 10 * 1024 * 1024) return Result.fail(422, "文件大小不能超过 10MB");
+        try {
+            Path dir = Paths.get(uploadPath, "attach").toAbsolutePath();
+            if (!Files.exists(dir)) Files.createDirectories(dir);
+            String fileName = UUID.randomUUID().toString().replace("-", "") + "." + ext;
+            Files.copy(file.getInputStream(), dir.resolve(fileName), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return Result.ok(java.util.Map.of(
+                "url", "/uploads/attach/" + fileName,
+                "name", originalName));
+        } catch (IOException e) {
+            log.error("Attachment upload failed", e);
+            return Result.fail(500, "文件上传失败");
+        }
+    }
 }
