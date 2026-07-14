@@ -61,9 +61,14 @@ const deptRules: FormRules = {
 }
 
 async function fetchTree() {
+  // 本页"组织管理"合并了部门/分支两块,菜单本身按 dept:view 或 branch:view 任一显示,
+  // 只有其中一个权限的人访问是预期行为,不该因为没有另一半权限就弹错误提示
+  if (!auth.hasPermission('PERM_dept:view')) return
   treeLoading.value = true
   try {
     deptTree.value = await deptApi.tree()
+  } catch {
+    // 忽略
   } finally {
     treeLoading.value = false
   }
@@ -146,6 +151,7 @@ const branchRules: FormRules = {
 const isAffiliated = computed(() => branchForm.type === 'affiliated')
 
 async function fetchBranches() {
+  if (!auth.hasPermission('PERM_branch:view')) return
   branchLoading.value = true
   try {
     const res = await branchApi.page({
@@ -155,6 +161,8 @@ async function fetchBranches() {
     })
     branches.value = res.records
     branchTotal.value = res.total
+  } catch {
+    // 忽略,理由同 fetchTree
   } finally {
     branchLoading.value = false
   }

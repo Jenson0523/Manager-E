@@ -39,8 +39,15 @@ function flattenDepts(nodes: DeptTreeVO[], level = 0): { id: number; label: stri
 }
 
 async function fetchDepts() {
-  const tree = await deptApi.tree()
-  deptOptions.value = flattenDepts(tree)
+  // 部门树只用于筛选下拉/表单选择,单独的 dept:view 权限;只给了"查看人员"的账号
+  // 没有这个权限是正常情况,静默留空,不当作错误弹窗打扰用户
+  if (!auth.hasPermission('PERM_dept:view')) return
+  try {
+    const tree = await deptApi.tree()
+    deptOptions.value = flattenDepts(tree)
+  } catch {
+    // 同上,忽略
+  }
 }
 
 const roles = ref<RoleVO[]>([])
@@ -168,7 +175,13 @@ async function fetchList() {
 }
 
 async function fetchRoles() {
-  roles.value = await roleApi.list()
+  // 角色列表只用于筛选下拉/分配角色,单独的 role:view 权限,道理同 fetchDepts
+  if (!auth.hasPermission('PERM_role:view')) return
+  try {
+    roles.value = await roleApi.list()
+  } catch {
+    // 忽略
+  }
 }
 
 function onSearch() {
@@ -309,7 +322,13 @@ async function ensurePermIndex() {
 }
 async function mergedPreviewFor(roleIds: number[]): Promise<string[]> {
   if (roleIds.length < 2) return []
-  await ensurePermIndex()
+  // 仅是辅助预览,没有 role:view 权限时静默跳过,不弹错误打断勾选操作
+  if (!auth.hasPermission('PERM_role:view')) return []
+  try {
+    await ensurePermIndex()
+  } catch {
+    return []
+  }
   const missing = roleIds.filter((id) => !rolePermCache.has(id))
   if (missing.length) {
     const results = await Promise.all(missing.map((id) => roleApi.permissionIds(id)))
