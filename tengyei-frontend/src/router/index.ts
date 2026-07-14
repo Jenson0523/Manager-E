@@ -144,15 +144,17 @@ router.beforeEach(async (to) => {
 })
 
 // 权限热刷新:管理员改完角色权限,用户切换页面即生效(不用重新登录/手动刷新)。
-// 后台静默拉取,不阻塞导航;权限列表是响应式的,按钮 v-if 会随之自动显隐。
+// 后台静默拉取,不阻塞导航;权限列表是响应式的,按钮 v-if/disabled 会随之自动更新。
+// 导出供页内切 tab(不触发路由跳转,如 ApprovalView 的 el-tabs)复用同一节流窗口。
 let lastPermRefresh = 0
-router.afterEach(() => {
+export function refreshPermissionsThrottled() {
   const auth = useAuthStore()
   if (!auth.isLoggedIn || !auth.userInfo) return
   const now = Date.now()
-  if (now - lastPermRefresh < 3000) return // 3秒节流,防路由重定向连环触发
+  if (now - lastPermRefresh < 3000) return // 3秒节流,防连环触发
   lastPermRefresh = now
-  auth.fetchUserInfo().catch(() => { /* 静默失败,下次导航再试 */ })
-})
+  auth.fetchUserInfo().catch(() => { /* 静默失败,下次触发再试 */ })
+}
+router.afterEach(() => refreshPermissionsThrottled())
 
 export default router

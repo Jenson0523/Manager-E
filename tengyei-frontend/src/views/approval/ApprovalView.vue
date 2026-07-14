@@ -8,6 +8,7 @@ import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/utils/responsive'
 import { downloadExcel } from '@/utils/download'
+import { refreshPermissionsThrottled } from '@/router'
 import type { ApprovalInstanceVO, ApprovalNodeVO, ApprovalFlowVO, ApprovalStatisticsVO, ApprovalDelegateVO, FormField } from '@/types/approval'
 
 const auth = useAuthStore()
@@ -46,6 +47,8 @@ const flowList = ref<ApprovalFlowVO[]>([])
 const stats = ref<ApprovalStatisticsVO | null>(null)
 
 async function loadTab(tab: string) {
+  // 页内切 tab 不经过路由跳转,router 的权限热刷新钩子不会触发,这里补一次(共用同一节流窗口)
+  refreshPermissionsThrottled()
   loading.value = true
   try {
     if (tab === 'todo') todoList.value = await approvalApi.todo()
@@ -624,8 +627,12 @@ async function refreshStats() {
 <template>
   <div class="page">
     <div class="toolbar">
-      <el-button v-if="canApply" type="primary" @click="openApply">发起审批</el-button>
-      <el-button v-if="canDelegate" @click="openDelegate">代理设置</el-button>
+      <el-tooltip :disabled="canApply" content="无发起审批权限,请联系管理员分配" placement="top">
+        <el-button type="primary" :disabled="!canApply" @click="openApply">发起审批</el-button>
+      </el-tooltip>
+      <el-tooltip :disabled="canDelegate" content="无审批代理权限,请联系管理员分配" placement="top">
+        <el-button :disabled="!canDelegate" @click="openDelegate">代理设置</el-button>
+      </el-tooltip>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="(t) => loadTab(t as string)">
@@ -797,7 +804,9 @@ async function refreshStats() {
             <el-input v-model="statsFilter" placeholder="搜索单号/表单/申请人/状态" clearable size="small" style="width: 260px" />
             <div>
               <el-button size="small" @click="refreshStats">刷新</el-button>
-              <el-button v-if="canManage" size="small" @click="exportApprovals">导出</el-button>
+              <el-tooltip :disabled="canManage" content="无审批管理权限,请联系管理员分配" placement="top">
+                <el-button size="small" :disabled="!canManage" @click="exportApprovals">导出</el-button>
+              </el-tooltip>
             </div>
           </div>
 
@@ -834,9 +843,9 @@ async function refreshStats() {
         </template>
       </el-tab-pane>
 
-      <el-tab-pane v-if="canManage" label="流程管理" name="flows">
+      <el-tab-pane :disabled="!canManage" label="流程管理" name="flows">
         <div class="flow-toolbar">
-          <el-button type="primary" size="small" @click="openFlowCreate">新建流程</el-button>
+          <el-button type="primary" size="small" :disabled="!canManage" @click="openFlowCreate">新建流程</el-button>
         </div>
         <el-table v-loading="loading" :data="flowList" stripe>
           <el-table-column prop="formType" label="表单类型" width="100" />
@@ -856,8 +865,8 @@ async function refreshStats() {
           </el-table-column>
           <el-table-column label="操作" width="140">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openFlowEdit(row as ApprovalFlowVO)">编辑</el-button>
-              <el-button link type="primary" @click="toggleFlow(row as ApprovalFlowVO)">
+              <el-button link type="primary" :disabled="!canManage" @click="openFlowEdit(row as ApprovalFlowVO)">编辑</el-button>
+              <el-button link type="primary" :disabled="!canManage" @click="toggleFlow(row as ApprovalFlowVO)">
                 {{ (row as ApprovalFlowVO).status === 1 ? '停用' : '启用' }}
               </el-button>
             </template>
@@ -961,22 +970,34 @@ async function refreshStats() {
             <div v-if="n.comment" class="timeline-node-comment">{{ n.comment }}</div>
           </el-timeline-item>
         </el-timeline>
-        <template v-if="detail.status === 'PENDING' && isMyTurn && (canApprove || canReject)">
+        <template v-if="detail.status === 'PENDING' && isMyTurn">
           <el-input v-model="actComment" type="textarea" :rows="2" placeholder="审批意见（可选）" style="margin-top: 12px" />
         </template>
       </template>
       <template #footer>
         <el-button @click="detailDialog = false">关闭</el-button>
         <template v-if="detail?.status === 'RETURNED' && isMyApply">
-          <el-button v-if="canCancel" @click="cancelInstance">撤回</el-button>
+          <el-tooltip :disabled="canCancel" content="无撤回权限,请联系管理员分配" placement="top">
+            <el-button :disabled="!canCancel" @click="cancelInstance">撤回</el-button>
+          </el-tooltip>
           <el-button type="primary" @click="openResubmit">修改并重新提交</el-button>
         </template>
         <template v-if="detail?.status === 'PENDING'">
-          <el-button v-if="isMyApply && canCancel" @click="cancelInstance">撤回</el-button>
-          <el-button v-if="isMyTurn && canTransfer" @click="openTransfer">转交</el-button>
-          <el-button v-if="isMyTurn && canApprove" @click="openAddSign">加签</el-button>
-          <el-button v-if="isMyTurn && canReject" type="danger" @click="act('REJECT')">驳回</el-button>
-          <el-button v-if="isMyTurn && canApprove" type="primary" @click="act('APPROVE')">通过</el-button>
+          <el-tooltip v-if="isMyApply" :disabled="canCancel" content="无撤回权限,请联系管理员分配" placement="top">
+            <el-button :disabled="!canCancel" @click="cancelInstance">撤回</el-button>
+          </el-tooltip>
+          <el-tooltip v-if="isMyTurn" :disabled="canTransfer" content="无转交权限,请联系管理员分配" placement="top">
+            <el-button :disabled="!canTransfer" @click="openTransfer">转交</el-button>
+          </el-tooltip>
+          <el-tooltip v-if="isMyTurn" :disabled="canApprove" content="无审批通过权限,加签也不可用" placement="top">
+            <el-button :disabled="!canApprove" @click="openAddSign">加签</el-button>
+          </el-tooltip>
+          <el-tooltip v-if="isMyTurn" :disabled="canReject" content="无驳回权限,请联系管理员分配" placement="top">
+            <el-button type="danger" :disabled="!canReject" @click="act('REJECT')">驳回</el-button>
+          </el-tooltip>
+          <el-tooltip v-if="isMyTurn" :disabled="canApprove" content="无通过权限,请联系管理员分配" placement="top">
+            <el-button type="primary" :disabled="!canApprove" @click="act('APPROVE')">通过</el-button>
+          </el-tooltip>
         </template>
       </template>
     </el-dialog>
