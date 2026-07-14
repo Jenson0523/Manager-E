@@ -3,13 +3,14 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Edit, ArrowDown } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
-import { roleApi } from '@/api/rbac'
+import { roleApi, permissionApi } from '@/api/rbac'
 import { deptApi } from '@/api/org'
 import { useAuthStore } from '@/stores/auth'
 import type { UserVO, UserCreateDTO, UserUpdateDTO } from '@/types/user'
 import type { RoleVO } from '@/types/rbac'
 import type { DeptTreeVO } from '@/types/org'
 import { strongPasswordRule, strongPasswordPattern, PASSWORD_TIP } from '@/utils/password'
+import { moduleLabel } from '@/utils/moduleLabels'
 
 const auth = useAuthStore()
 const canCreate = computed(() => auth.hasPermission('PERM_user:create'))
@@ -114,6 +115,7 @@ const batchRoleIds = ref<number[]>([])
 
 function openBatchRoles() {
   batchRoleIds.value = []
+  batchRoleMergedPreview.value = []
   batchRoleDialog.value = true
 }
 
@@ -186,6 +188,7 @@ function openCreate() {
     branchId: undefined,
     roleIds: [],
   })
+  createRoleMergedPreview.value = []
   createDialog.value = true
 }
 
@@ -290,6 +293,52 @@ function openRoleAssign(row: UserVO) {
   roleTarget.value = row
   selectedRoleIds.value = [...(row.roleIds ?? [])]
   roleDialog.value = true
+  refreshRoleMergedPreview()
+}
+
+/* 多角色叠加权限预览:超过一个角色时,提示合并后实际拥有的权限(避免误留额外角色导致权限意外扩大——
+   这正是排查过一次真实事故的根因) */
+const permIdToLabel = ref<Map<number, { module: string; name: string }>>(new Map())
+const rolePermCache = new Map<number, number[]>()
+async function ensurePermIndex() {
+  if (permIdToLabel.value.size) return
+  const groups = await permissionApi.grouped()
+  const m = new Map<number, { module: string; name: string }>()
+  for (const g of groups) for (const p of g.permissions) m.set(p.id, { module: g.module, name: p.name })
+  permIdToLabel.value = m
+}
+async function mergedPreviewFor(roleIds: number[]): Promise<string[]> {
+  if (roleIds.length < 2) return []
+  await ensurePermIndex()
+  const missing = roleIds.filter((id) => !rolePermCache.has(id))
+  if (missing.length) {
+    const results = await Promise.all(missing.map((id) => roleApi.permissionIds(id)))
+    missing.forEach((id, i) => rolePermCache.set(id, results[i]))
+  }
+  const union = new Set<number>()
+  roleIds.forEach((id) => rolePermCache.get(id)?.forEach((pid) => union.add(pid)))
+  const byModule = new Map<string, string[]>()
+  union.forEach((pid) => {
+    const info = permIdToLabel.value.get(pid)
+    if (!info) return
+    const arr = byModule.get(info.module) ?? []
+    arr.push(info.name)
+    byModule.set(info.module, arr)
+  })
+  return [...byModule.entries()].map(([mod, names]) => `${moduleLabel(mod)}: ${names.join('、')}`)
+}
+
+const roleMergedPreview = ref<string[]>([])
+async function refreshRoleMergedPreview() {
+  roleMergedPreview.value = await mergedPreviewFor(selectedRoleIds.value)
+}
+const batchRoleMergedPreview = ref<string[]>([])
+async function refreshBatchRoleMergedPreview() {
+  batchRoleMergedPreview.value = await mergedPreviewFor(batchRoleIds.value)
+}
+const createRoleMergedPreview = ref<string[]>([])
+async function refreshCreateRoleMergedPreview() {
+  createRoleMergedPreview.value = await mergedPreviewFor(createForm.roleIds ?? [])
 }
 
 async function saveRoles() {
@@ -466,9 +515,13 @@ onMounted(() => {
           </el-select>
         </el-form-item>
         <el-form-item label="角色">
-          <el-checkbox-group v-model="createForm.roleIds">
+          <el-checkbox-group v-model="createForm.roleIds" @change="refreshCreateRoleMergedPreview">
             <el-checkbox v-for="r in roles" :key="r.id" :value="r.id">{{ r.name }}</el-checkbox>
           </el-checkbox-group>
+          <div v-if="createRoleMergedPreview.length" class="role-merge-preview">
+            <div class="role-merge-title">勾选多个角色,合并后将拥有以下权限：</div>
+            <div v-for="line in createRoleMergedPreview" :key="line">{{ line }}</div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -502,11 +555,15 @@ onMounted(() => {
     </el-dialog>
 
     <el-dialog v-model="roleDialog" title="分配角色" width="420px">
-      <el-checkbox-group v-model="selectedRoleIds">
+      <el-checkbox-group v-model="selectedRoleIds" @change="refreshRoleMergedPreview">
         <el-checkbox v-for="r in roles" :key="r.id" :label="r.id" style="display: block; margin: 6px 0">
           {{ r.name }}
         </el-checkbox>
       </el-checkbox-group>
+      <div v-if="roleMergedPreview.length" class="role-merge-preview">
+        <div class="role-merge-title">勾选多个角色,合并后将拥有以下权限：</div>
+        <div v-for="line in roleMergedPreview" :key="line">{{ line }}</div>
+      </div>
       <template #footer>
         <el-button @click="roleDialog = false">取消</el-button>
         <el-button type="primary" @click="saveRoles">保存</el-button>
@@ -515,11 +572,15 @@ onMounted(() => {
 
     <el-dialog v-model="batchRoleDialog" title="批量分配角色" width="420px">
       <p style="margin-bottom: 12px; color: #6b7280">将为已选 {{ selectedIds.length }} 个用户统一分配以下角色：</p>
-      <el-checkbox-group v-model="batchRoleIds">
+      <el-checkbox-group v-model="batchRoleIds" @change="refreshBatchRoleMergedPreview">
         <el-checkbox v-for="r in roles" :key="r.id" :value="r.id" style="display: block; margin: 6px 0">
           {{ r.name }}
         </el-checkbox>
       </el-checkbox-group>
+      <div v-if="batchRoleMergedPreview.length" class="role-merge-preview">
+        <div class="role-merge-title">勾选多个角色,合并后将拥有以下权限：</div>
+        <div v-for="line in batchRoleMergedPreview" :key="line">{{ line }}</div>
+      </div>
       <template #footer>
         <el-button @click="batchRoleDialog = false">取消</el-button>
         <el-button type="primary" @click="submitBatchRoles">确定</el-button>
@@ -533,6 +594,20 @@ onMounted(() => {
   background: #fff;
   border-radius: 10px;
   padding: 16px;
+}
+.role-merge-preview {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #b88230;
+  line-height: 1.8;
+}
+.role-merge-title {
+  font-weight: 600;
+  margin-bottom: 2px;
 }
 .toolbar {
   display: flex;
