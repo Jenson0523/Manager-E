@@ -9,6 +9,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -25,14 +26,17 @@ import java.util.stream.Collectors;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final JdbcTemplate jdbcTemplate;
     private final Optional<TokenBlacklistService> blacklistService;
     private final Optional<CompanyBlockService> companyBlockService;
 
     @Autowired
     public JwtAuthFilter(JwtService jwtService,
+                         JdbcTemplate jdbcTemplate,
                          Optional<TokenBlacklistService> blacklistService,
                          Optional<CompanyBlockService> companyBlockService) {
         this.jwtService = jwtService;
+        this.jdbcTemplate = jdbcTemplate;
         this.blacklistService = blacklistService;
         this.companyBlockService = companyBlockService;
     }
@@ -60,7 +64,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 }
                 String dataScope = jwtService.getDataScope(token);
                 String realName = jwtService.getRealName(token);
-                List<String> permissions = jwtService.getPermissions(token);
+                // 鉴权与界面同源:权限每请求实时查库,不再用登录时冻结在 JWT 里的快照。
+                // 管理员改权限立刻生效,停用/删除的用户立刻失权。
+                // ponytail: 每请求+2条索引查询,QPS 上来后给此处加短TTL本地缓存
+                List<String> permissions = loadPermissions(userId);
 
                 TenantContext.setTenantId(tenantId);
                 TenantContext.setUserId(userId);
@@ -83,6 +90,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    private List<String> loadPermissions(Long userId) {
+        List<Integer> su = jdbcTemplate.queryForList(
+            "SELECT is_super_admin FROM `user` WHERE id = ? AND is_deleted = 0 AND status = 1",
+            Integer.class, userId);
+        if (su.isEmpty()) return List.of();
+        if (su.get(0) != null && su.get(0) == 1) return List.of("*");
+        return jdbcTemplate.queryForList(
+            "SELECT DISTINCT p.code FROM permission p " +
+            "JOIN role_permission rp ON rp.permission_id = p.id " +
+            "JOIN user_role ur ON ur.role_id = rp.role_id " +
+            "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 " +
+            "WHERE ur.user_id = ? AND p.status = 1",
+            String.class, userId);
     }
 
     private String extractToken(HttpServletRequest request) {
