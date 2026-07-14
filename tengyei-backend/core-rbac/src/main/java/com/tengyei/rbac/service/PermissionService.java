@@ -18,8 +18,7 @@ public class PermissionService {
 
     private final PermissionMapper permissionMapper;
 
-    public List<PermissionGroupVO> grouped() {
-        String tier = com.tengyei.common.context.TenantContext.isSuperAdmin() ? "platform" : "company";
+    public List<PermissionGroupVO> grouped(String tier) {
         List<Permission> all = permissionMapper.selectList(
             new LambdaQueryWrapper<Permission>()
                 .eq(Permission::getStatus, 1)

@@ -28,7 +28,7 @@ public class LoginLogController {
     private final JdbcTemplate jdbcTemplate;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view')")
+    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view') or hasAuthority('PERM_platform:audit:view')")
     public Result<PageResult<Map<String, Object>>> list(
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "20") int size,
@@ -81,7 +81,7 @@ public class LoginLogController {
     }
 
     @GetMapping("/export")
-    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view')")
+    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view') or hasAuthority('PERM_platform:audit:view')")
     public void export(
             @RequestParam(name = "username", required = false) String username,
             @RequestParam(name = "result", required = false) Integer result,

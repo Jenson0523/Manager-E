@@ -32,7 +32,7 @@ public class PlatformRoleController {
     @GetMapping("/permissions")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:role:view')")
     public Result<List<PermissionGroupVO>> permissions() {
-        return Result.ok(permissionService.grouped());
+        return Result.ok(permissionService.grouped("platform"));
     }
 
     @PostMapping

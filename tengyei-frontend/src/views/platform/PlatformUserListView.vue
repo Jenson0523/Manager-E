@@ -24,7 +24,12 @@ const pagedList = computed(() => {
 const roles = ref<PlatformRoleVO[]>([])
 
 async function fetchRoles() {
-  roles.value = await platformRoleApi.list()
+  if (!auth.hasPermission('PERM_platform:role:view')) return
+  try {
+    roles.value = await platformRoleApi.list()
+  } catch {
+    // 无权限或接口异常时静默忽略,不影响主列表展示
+  }
 }
 
 async function fetchList() {
