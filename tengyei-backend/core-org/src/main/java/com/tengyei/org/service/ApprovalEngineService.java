@@ -822,6 +822,19 @@ public class ApprovalEngineService {
         else delegateMapper.insert(d);
     }
 
+    /** 审批选人/选角色下拉数据：抄送/转交/加签/流程设计都要选人,不应要求 user:view/role:view 管理权限 */
+    public Map<String, Object> pickerOptions() {
+        Long tenantId = TenantContext.getTenantId();
+        List<Map<String, Object>> users = jdbcTemplate.queryForList(
+            "SELECT id, real_name AS realName FROM `user` " +
+            "WHERE tenant_id = ? AND status = 1 AND is_deleted = 0 ORDER BY id LIMIT 500",
+            tenantId);
+        List<Map<String, Object>> roles = jdbcTemplate.queryForList(
+            "SELECT id, name FROM role WHERE tenant_id = ? AND status = 1 AND is_deleted = 0 ORDER BY id",
+            tenantId);
+        return Map.of("users", users, "roles", roles);
+    }
+
     /** 统计：仅统计与当前用户相关的实例(作为发起人/审批人/抄送人)，数据不串 */
     public Map<String, Object> statistics() {
         Long tenantId = TenantContext.getTenantId();

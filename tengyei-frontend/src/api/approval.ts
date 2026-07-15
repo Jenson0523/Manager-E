@@ -35,6 +35,11 @@ export const approvalApi = {
   listForStats: () => request.get<never, ApprovalInstanceVO[]>('/v1/approval/list'),
   statisticsDetail: (status?: string) =>
     request.get<never, ApprovalInstanceVO[]>('/v1/approval/statistics/detail', { params: { status } }),
+  /** 选人/选角色下拉(抄送/转交/加签/流程设计),按审批权限放行 */
+  options: () =>
+    request.get<never, { users: { id: number; realName: string }[]; roles: { id: number; name: string }[] }>(
+      '/v1/approval/options',
+    ),
   delegateGet: () => request.get<never, ApprovalDelegateVO | null>('/v1/approval/delegate'),
   delegateSave: (data: ApprovalDelegateVO) =>
     request.put<never, void>('/v1/approval/delegate', data),

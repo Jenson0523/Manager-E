@@ -34,6 +34,14 @@ public class ApprovalTodoController {
         return Result.ok(flowService.enabledForms());
     }
 
+    /** 选人/选角色下拉:抄送、转交、加签、流程设计共用。按审批权限放行,不要求 user:view/role:view */
+    @GetMapping("/options")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_approval:approve','PERM_approval:transfer','PERM_approval:manage'," +
+            "'PERM_platform:approval:view','PERM_platform:approval:apply','PERM_platform:approval:approve','PERM_platform:approval:transfer','PERM_platform:approval:manage')")
+    public Result<java.util.Map<String, Object>> pickerOptions() {
+        return Result.ok(engineService.pickerOptions());
+    }
+
     @GetMapping("/todo")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<List<ApprovalInstanceVO>> todo() {

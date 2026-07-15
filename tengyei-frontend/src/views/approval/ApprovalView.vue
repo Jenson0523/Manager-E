@@ -2,9 +2,6 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { approvalApi } from '@/api/approval'
-import { roleApi } from '@/api/rbac'
-import { userApi } from '@/api/user'
-import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/utils/responsive'
 import { downloadExcel } from '@/utils/download'
@@ -486,16 +483,11 @@ function flowNodeSummary(f: ApprovalFlowVO): string {
   }
 }
 async function loadFlowRefs() {
-  const isPlatform = auth.userInfo?.tenantId === 0
-  if (isPlatform) {
-    const [roles, users] = await Promise.all([platformRoleApi.list(), platformUserApi.list({})])
-    roleOptions.value = roles.map((r) => ({ id: r.id, name: r.name }))
-    userOptions.value = users.map((u) => ({ id: u.id, name: u.realName }))
-  } else {
-    const [roles, page] = await Promise.all([roleApi.list(), userApi.page({ page: 1, size: 200 })])
-    roleOptions.value = roles.map((r) => ({ id: r.id, name: r.name }))
-    userOptions.value = page.records.map((u) => ({ id: u.id, name: u.realName }))
-  }
+  // 走审批域的 /options 接口(任一审批权限即可),不再依赖 user:view/role:view 管理权限,
+  // 否则只有审批权限的普通员工点"发起审批"会连弹无权限访问且对话框打不开
+  const opts = await approvalApi.options()
+  roleOptions.value = opts.roles.map((r) => ({ id: r.id, name: r.name }))
+  userOptions.value = opts.users.map((u) => ({ id: u.id, name: u.realName }))
 }
 function blankField(): FieldDraft {
   return { key: '', label: '', type: 'text', required: false, optionsText: '', unit: '' }

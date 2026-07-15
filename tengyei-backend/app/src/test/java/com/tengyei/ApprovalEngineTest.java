@@ -37,6 +37,39 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 选人下拉:仅审批权限(无 user:view/role:view)也能拉 /options,但 /users 仍 403 */
+    @Test
+    void pickerOptionsAccessibleWithApprovalPermOnly() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String userD = "clerk_" + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, " +
+            "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
+            "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())",
+            seeded.tenantId(), "U-CLK", userD, OrgTestSupport.ADMIN_PWD_HASH, "出纳D", "13911112222");
+        Long uidD = jdbcTemplate.queryForObject("SELECT id FROM user WHERE username = ?", Long.class, userD);
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id, name, code, data_scope, is_preset, status, is_deleted, created_at, updated_at) " +
+            "VALUES (?,?,?,?,0,1,0,NOW(),NOW())", seeded.tenantId(), "出纳", "clerk_" + System.nanoTime(), "all");
+        Long clerkRoleId = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id = ? ORDER BY id DESC LIMIT 1", Long.class, seeded.tenantId());
+        jdbcTemplate.update("INSERT INTO user_role (user_id, role_id, created_at) VALUES (?,?,NOW())", uidD, clerkRoleId);
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id, permission_id, created_at) " +
+            "SELECT ?, id, NOW() FROM permission WHERE code IN ('approval:view','approval:apply')", clerkRoleId);
+        String tokenD = OrgTestSupport.login(mockMvc, objectMapper, userD);
+
+        mockMvc.perform(get("/api/v1/approval/options")
+                .header("Authorization", "Bearer " + tokenD))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.users.length()").value(org.hamcrest.Matchers.greaterThan(0)))
+                .andExpect(jsonPath("$.data.roles.length()").value(org.hamcrest.Matchers.greaterThan(0)));
+        // 管理接口不放开:仍需 user:view
+        mockMvc.perform(get("/api/v1/users")
+                .header("Authorization", "Bearer " + tokenD))
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
     /** 撤回:申请人可撤回审批中的实例;详情越权:非相关人且无 manage 权限 -> 403 */
     @Test
     void cancelAndDetailPrivacy() throws Exception {
