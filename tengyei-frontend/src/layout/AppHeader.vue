@@ -74,7 +74,9 @@ async function handleLogout() {
   }
   await auth.logout()
   tabStore.reset()
-  router.replace('/login')
+  // 整页跳转而非 SPA 路由:把动态注册的模块路由、moduleRoutesReady、各 store
+  // 内存状态全部归零,避免换账号登录时沿用上一账号的模块路由/菜单缓存
+  window.location.href = '/login'
 }
 </script>
 

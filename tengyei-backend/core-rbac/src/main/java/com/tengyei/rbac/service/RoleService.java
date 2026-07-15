@@ -70,13 +70,21 @@ public class RoleService {
 
     @Transactional
     public void assignPermissions(Long roleId, List<Long> permissionIds) {
-        requireRole(roleId);
+        Role r = requireRole(roleId);
         jdbcTemplate.update("DELETE FROM role_permission WHERE role_id = ?", roleId);
         if (permissionIds != null) {
+            // 只允许挂本层级的权限:公司角色只能配 company 层权限。
+            // 否则公司管理员可绕过界面直接调接口把平台权限ID塞进自己角色,垂直提权到平台侧
+            String tier = (r.getTenantId() != null && r.getTenantId() == 0L) ? "platform" : "company";
             for (Long pid : permissionIds) {
-                jdbcTemplate.update(
-                    "INSERT INTO role_permission (role_id, permission_id, created_at) VALUES (?,?,NOW())",
-                    roleId, pid);
+                Long ok = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM permission WHERE id = ? AND tier = ? AND status = 1",
+                    Long.class, pid, tier);
+                if (ok != null && ok > 0) {
+                    jdbcTemplate.update(
+                        "INSERT INTO role_permission (role_id, permission_id, created_at) VALUES (?,?,NOW())",
+                        roleId, pid);
+                }
             }
         }
     }

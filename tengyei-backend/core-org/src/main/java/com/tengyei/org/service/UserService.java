@@ -340,11 +340,9 @@ public class UserService {
 
     @Transactional
     public void batchAssignRoles(List<Long> ids, List<Long> roleIds) {
+        // 复用单个分配逻辑,统一走"角色必须属于目标用户公司"的越权防护
         for (Long userId : filterIdsInScope(ids)) {
-            jdbcTemplate.update("DELETE FROM user_role WHERE user_id = ?", userId);
-            for (Long roleId : roleIds) {
-                jdbcTemplate.update("INSERT INTO user_role (user_id, role_id) VALUES (?, ?)", userId, roleId);
-            }
+            assignRoles(userId, roleIds);
         }
     }
 
@@ -369,13 +367,20 @@ public class UserService {
 
     @Transactional
     public void assignRoles(Long userId, List<Long> roleIds) {
-        requireUser(userId);
+        User u = requireUser(userId);
         jdbcTemplate.update("DELETE FROM user_role WHERE user_id = ?", userId);
         if (roleIds != null) {
             for (Long rid : roleIds) {
-                jdbcTemplate.update(
-                    "INSERT INTO user_role (user_id, role_id, created_at) VALUES (?,?,NOW())",
-                    userId, rid);
+                // 只允许分配目标用户所属公司的角色。否则可绕过界面直接调接口
+                // 把平台角色(tenant 0)或其他公司的角色挂给本公司用户,越权提权
+                Long ok = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM role WHERE id = ? AND tenant_id = ? AND is_deleted = 0",
+                    Long.class, rid, u.getTenantId());
+                if (ok != null && ok > 0) {
+                    jdbcTemplate.update(
+                        "INSERT INTO user_role (user_id, role_id, created_at) VALUES (?,?,NOW())",
+                        userId, rid);
+                }
             }
         }
     }

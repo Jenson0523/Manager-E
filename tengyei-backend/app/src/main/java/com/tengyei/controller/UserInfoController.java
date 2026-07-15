@@ -45,13 +45,15 @@ public class UserInfoController {
         if (isSuperAdmin) {
             permissions = List.of("*");
         } else {
+            // r.tenant_id 与用户公司同源:与 JwtAuthFilter 鉴权口径一致,
+            // 被挂了非本公司角色时菜单也不显示(写入侧已校验,此为兜底)
             permissions = jdbcTemplate.queryForList(
                 "SELECT DISTINCT p.code FROM permission p " +
                 "JOIN role_permission rp ON rp.permission_id = p.id " +
                 "JOIN user_role ur ON ur.role_id = rp.role_id " +
-                "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 " +
+                "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 AND r.tenant_id = ? " +
                 "WHERE ur.user_id = ? AND p.status = 1",
-                String.class, userId
+                String.class, tenantId, userId
             );
         }
         List<String> roleCodes = jdbcTemplate.queryForList(

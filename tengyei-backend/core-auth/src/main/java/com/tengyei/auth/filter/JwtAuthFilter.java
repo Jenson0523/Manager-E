@@ -93,18 +93,22 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     }
 
     private List<String> loadPermissions(Long userId) {
-        List<Integer> su = jdbcTemplate.queryForList(
-            "SELECT is_super_admin FROM `user` WHERE id = ? AND is_deleted = 0 AND status = 1",
-            Integer.class, userId);
-        if (su.isEmpty()) return List.of();
-        if (su.get(0) != null && su.get(0) == 1) return List.of("*");
+        var rows = jdbcTemplate.queryForList(
+            "SELECT is_super_admin, tenant_id FROM `user` WHERE id = ? AND is_deleted = 0 AND status = 1",
+            userId);
+        if (rows.isEmpty()) return List.of();
+        Object su = rows.get(0).get("is_super_admin");
+        if (su != null && ((Number) su).intValue() == 1) return List.of("*");
+        Long tenantId = ((Number) rows.get(0).get("tenant_id")).longValue();
+        // r.tenant_id 必须等于用户所属公司:兜底防线,即使历史数据里被挂了
+        // 平台/其他公司的角色,鉴权时也不生效(写入侧 assignRoles 已同源校验)
         return jdbcTemplate.queryForList(
             "SELECT DISTINCT p.code FROM permission p " +
             "JOIN role_permission rp ON rp.permission_id = p.id " +
             "JOIN user_role ur ON ur.role_id = rp.role_id " +
-            "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 " +
+            "JOIN role r ON r.id = ur.role_id AND r.status = 1 AND r.is_deleted = 0 AND r.tenant_id = ? " +
             "WHERE ur.user_id = ? AND p.status = 1",
-            String.class, userId);
+            String.class, tenantId, userId);
     }
 
     private String extractToken(HttpServletRequest request) {
