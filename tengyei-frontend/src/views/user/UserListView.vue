@@ -640,7 +640,7 @@ onMounted(() => {
     <el-dialog v-model="importDialog" title="批量导入人员" width="560px">
       <p style="font-size: 13px; color: #606266; margin: 0 0 12px">
         1. <el-button link type="primary" @click="downloadImportTemplate">下载导入模板</el-button>
-        按模板填写(姓名/账号/初始密码/手机必填,角色填角色名称,多个用逗号分隔)<br />
+        按模板填写(姓名/账号/初始密码/手机必填;部门/角色填名称,须为系统中已有的名称,角色多个用逗号分隔)<br />
         2. 上传填好的文件,单次最多 500 行;失败行不影响成功行,失败原因见下方明细
       </p>
       <el-upload

@@ -77,6 +77,7 @@ public class UserController {
         example.setPassword("Zs@2026abc");
         example.setPhone("13800000000");
         example.setEmail("zhangsan@example.com");
+        example.setDeptName("财务部");
         example.setRoleNames("出纳");
         String fileName = URLEncoder.encode("人员导入模板", StandardCharsets.UTF_8).replace("+", "%20");
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

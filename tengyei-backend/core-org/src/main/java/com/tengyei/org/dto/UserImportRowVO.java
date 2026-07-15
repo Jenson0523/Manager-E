@@ -4,7 +4,7 @@ import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.annotation.write.style.ColumnWidth;
 import lombok.Data;
 
-/** 人员批量导入行(也用于生成导入模板)。部门/分支导入后可在人员页批量调整 */
+/** 人员批量导入行(也用于生成导入模板) */
 @Data
 @ColumnWidth(20)
 public class UserImportRowVO {
@@ -23,6 +23,9 @@ public class UserImportRowVO {
 
     @ExcelProperty("邮箱")
     private String email;
+
+    @ExcelProperty("部门(部门名,可留空)")
+    private String deptName;
 
     @ExcelProperty("角色(角色名,多个用逗号分隔)")
     private String roleNames;

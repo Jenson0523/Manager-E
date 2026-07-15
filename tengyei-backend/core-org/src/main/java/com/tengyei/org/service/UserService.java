@@ -280,12 +280,22 @@ public class UserService {
                         roleIds.add(ids.get(0));
                     }
                 }
+                Long deptId = null;
+                if (StringUtils.hasText(row.getDeptName())) {
+                    List<Long> ids = jdbcTemplate.queryForList(
+                        "SELECT id FROM dept WHERE tenant_id = ? AND name = ? AND is_deleted = 0",
+                        Long.class, tenantId, row.getDeptName().trim());
+                    if (ids.isEmpty()) throw new BusinessException(422, "部门「" + row.getDeptName().trim() + "」不存在");
+                    if (ids.size() > 1) throw new BusinessException(422, "存在多个同名部门「" + row.getDeptName().trim() + "」，请在人员页手动指定");
+                    deptId = ids.get(0);
+                }
                 UserCreateDTO dto = new UserCreateDTO();
                 dto.setUsername(row.getUsername().trim());
                 dto.setRealName(row.getRealName().trim());
                 dto.setPassword(row.getPassword().trim());
                 dto.setPhone(row.getPhone().trim());
                 dto.setEmail(StringUtils.hasText(row.getEmail()) ? row.getEmail().trim() : null);
+                dto.setDeptId(deptId);
                 dto.setRoleIds(roleIds);
                 create(dto);
                 success++;
