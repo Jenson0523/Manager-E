@@ -81,7 +81,7 @@ public class LoginLogController {
     }
 
     @GetMapping("/export")
-    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view') or hasAuthority('PERM_platform:audit:view')")
+    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:export') or hasAuthority('PERM_platform:audit:view')")
     public void export(
             @RequestParam(name = "username", required = false) String username,
             @RequestParam(name = "result", required = false) Integer result,

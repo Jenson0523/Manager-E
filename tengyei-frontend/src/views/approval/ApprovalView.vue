@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { approvalApi } from '@/api/approval'
+import { commonApi } from '@/api/common'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/utils/responsive'
 import { downloadExcel } from '@/utils/download'
@@ -32,9 +33,20 @@ const canApprove = computed(
 const canReject = computed(
   () => auth.hasPermission('PERM_approval:reject') || auth.hasPermission('PERM_platform:approval:reject')
 )
+const canView = computed(
+  () => auth.hasPermission('PERM_approval:view') || auth.hasPermission('PERM_platform:approval:view')
+)
+const hasAnyApprovalPerm = computed(() => canView.value || canApply.value || canManage.value)
 const isOverdue = (t?: string) => !!t && new Date(t) < new Date()
 
-const activeTab = ref('todo')
+// 默认落在第一个有权限的 tab,避免权限不含"查看审批"时一进来就请求 /todo 报无权限
+function firstPermittedTab(): string {
+  if (canView.value) return 'todo'
+  if (canApply.value) return 'my'
+  if (canManage.value) return 'flows'
+  return 'todo'
+}
+const activeTab = ref(firstPermittedTab())
 const loading = ref(false)
 const todoList = ref<ApprovalInstanceVO[]>([])
 const myList = ref<ApprovalInstanceVO[]>([])
@@ -48,12 +60,13 @@ async function loadTab(tab: string) {
   refreshPermissionsThrottled()
   loading.value = true
   try {
-    if (tab === 'todo') todoList.value = await approvalApi.todo()
-    else if (tab === 'my') myList.value = await approvalApi.my()
-    else if (tab === 'done') doneList.value = await approvalApi.done()
-    else if (tab === 'cc') ccList.value = await approvalApi.cc()
-    else if (tab === 'flows') flowList.value = await approvalApi.flows()
-    else if (tab === 'stats') {
+    // 每个 tab 先查权限再请求,避免权限不足时发出必 403 的请求(拦截器会全局弹错)
+    if (tab === 'todo' && canView.value) todoList.value = await approvalApi.todo()
+    else if (tab === 'my' && canApply.value) myList.value = await approvalApi.my()
+    else if (tab === 'done' && canView.value) doneList.value = await approvalApi.done()
+    else if (tab === 'cc' && canView.value) ccList.value = await approvalApi.cc()
+    else if (tab === 'flows' && canManage.value) flowList.value = await approvalApi.flows()
+    else if (tab === 'stats' && hasAnyApprovalPerm.value) {
       stats.value = await approvalApi.statistics()
       statsList.value = await approvalApi.listForStats()
     }
@@ -483,9 +496,9 @@ function flowNodeSummary(f: ApprovalFlowVO): string {
   }
 }
 async function loadFlowRefs() {
-  // 走审批域的 /options 接口(任一审批权限即可),不再依赖 user:view/role:view 管理权限,
+  // 走全站 /common/options 名录接口(登录即可),不依赖 user:view/role:view 管理权限,
   // 否则只有审批权限的普通员工点"发起审批"会连弹无权限访问且对话框打不开
-  const opts = await approvalApi.options()
+  const opts = await commonApi.options()
   roleOptions.value = opts.roles.map((r) => ({ id: r.id, name: r.name }))
   userOptions.value = opts.users.map((u) => ({ id: u.id, name: u.realName }))
 }
@@ -628,7 +641,7 @@ async function refreshStats() {
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="(t) => loadTab(t as string)">
-      <el-tab-pane label="我的待办" name="todo">
+      <el-tab-pane :disabled="!canView" label="我的待办" name="todo">
         <div v-if="isMobile" v-loading="loading" class="m-list">
           <div v-for="row in todoList" :key="row.id" class="m-card" @click="openDetail(row.id)">
             <div class="m-card-head">
@@ -665,7 +678,7 @@ async function refreshStats() {
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="我已发起" name="my">
+      <el-tab-pane :disabled="!canApply" label="我已发起" name="my">
         <div v-if="isMobile" v-loading="loading" class="m-list">
           <div v-for="row in myList" :key="row.id" class="m-card" @click="openDetail(row.id)">
             <div class="m-card-head">
@@ -703,7 +716,7 @@ async function refreshStats() {
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="我已审批" name="done">
+      <el-tab-pane :disabled="!canView" label="我已审批" name="done">
         <div v-if="isMobile" v-loading="loading" class="m-list">
           <div v-for="row in doneList" :key="row.id" class="m-card" @click="openDetail(row.id)">
             <div class="m-card-head">
@@ -738,7 +751,7 @@ async function refreshStats() {
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="抄送我" name="cc">
+      <el-tab-pane :disabled="!canView" label="抄送我" name="cc">
         <div v-if="isMobile" v-loading="loading" class="m-list">
           <div v-for="row in ccList" :key="row.id" class="m-card" @click="openDetail(row.id)">
             <div class="m-card-head">
@@ -776,7 +789,7 @@ async function refreshStats() {
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane v-if="canApply || canManage" label="统计" name="stats">
+      <el-tab-pane v-if="hasAnyApprovalPerm" label="统计" name="stats">
         <template v-if="stats">
           <!-- Compact summary bar -->
           <div class="stats-summary-bar">

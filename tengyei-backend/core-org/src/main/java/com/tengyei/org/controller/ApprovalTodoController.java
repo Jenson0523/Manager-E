@@ -34,14 +34,6 @@ public class ApprovalTodoController {
         return Result.ok(flowService.enabledForms());
     }
 
-    /** 选人/选角色下拉:抄送、转交、加签、流程设计共用。按审批权限放行,不要求 user:view/role:view */
-    @GetMapping("/options")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_approval:approve','PERM_approval:transfer','PERM_approval:manage'," +
-            "'PERM_platform:approval:view','PERM_platform:approval:apply','PERM_platform:approval:approve','PERM_platform:approval:transfer','PERM_platform:approval:manage')")
-    public Result<java.util.Map<String, Object>> pickerOptions() {
-        return Result.ok(engineService.pickerOptions());
-    }
-
     @GetMapping("/todo")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<List<ApprovalInstanceVO>> todo() {
@@ -56,20 +48,20 @@ public class ApprovalTodoController {
 
     /** 统计列表:按角色返回实例(管理员=全部,发起人=自己发起的,其他人=已审批的) */
     @GetMapping("/list")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_platform:approval:view','PERM_platform:approval:apply')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_approval:manage','PERM_platform:approval:view','PERM_platform:approval:apply','PERM_platform:approval:manage')")
     public Result<List<ApprovalInstanceVO>> listForStats() {
         return Result.ok(engineService.listForStats());
     }
 
     @GetMapping("/statistics")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_platform:approval:view','PERM_platform:approval:apply')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_approval:manage','PERM_platform:approval:view','PERM_platform:approval:apply','PERM_platform:approval:manage')")
     public Result<java.util.Map<String, Object>> statistics() {
         return Result.ok(engineService.statistics());
     }
 
     /** 统计卡片点击查看详情:按状态查询与当前用户相关的审批实例 */
     @GetMapping("/statistics/detail")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_platform:approval:view','PERM_platform:approval:apply')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_approval:manage','PERM_platform:approval:view','PERM_platform:approval:apply','PERM_platform:approval:manage')")
     public Result<List<ApprovalInstanceVO>> statisticsDetail(@RequestParam(required = false) String status) {
         return Result.ok(engineService.myRelatedByStatus(TenantContext.getUserId(), status));
     }

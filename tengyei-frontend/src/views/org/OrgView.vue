@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Edit, Delete, Folder, Document } from '@element-plus/icons-vue'
 import { deptApi, branchApi } from '@/api/org'
-import { userApi } from '@/api/user'
+import { commonApi } from '@/api/common'
 import { useAuthStore } from '@/stores/auth'
 import type { DeptTreeVO, DeptSaveDTO, BranchVO, BranchSaveDTO } from '@/types/org'
 
@@ -35,18 +35,20 @@ function handleNodeClick(data: DeptTreeVO) {
   fetchBranches()
 }
 
-/* 负责人选择 - 远程搜索 */
+/* 负责人选择:走全站 /common/options 名录(登录即可),本地过滤。
+ * 原来用 userApi.page(要 user:view 管理权限),只有部门/分支权限的账号一打开弹窗就弹无权限访问 */
+const allCompanyUsers = ref<{ id: number; label: string }[]>([])
 const companyUsers = ref<{ id: number; label: string }[]>([])
 
 async function searchCompanyUsers(query: string) {
   try {
-    const res = await userApi.page({ page: 1, size: 50, keyword: query })
-    if (res.records) {
-      companyUsers.value = res.records.map((u: any) => ({
-        id: u.id,
-        label: u.realName + (u.username ? ` (${u.username})` : ''),
-      }))
+    if (!allCompanyUsers.value.length) {
+      const opts = await commonApi.options()
+      allCompanyUsers.value = opts.users.map((u) => ({ id: u.id, label: u.realName }))
     }
+    companyUsers.value = query
+      ? allCompanyUsers.value.filter((u) => u.label.includes(query))
+      : allCompanyUsers.value
   } catch {
     companyUsers.value = []
   }

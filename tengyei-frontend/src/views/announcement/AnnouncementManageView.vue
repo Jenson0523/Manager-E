@@ -3,11 +3,8 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { announcementApi, type AnnouncementVO } from '@/api/announcement'
 import AnnouncementDetailDialog from '@/components/AnnouncementDetailDialog.vue'
-import { companyApi } from '@/api/company'
-import { deptApi } from '@/api/org'
-import { roleApi } from '@/api/rbac'
+import { commonApi } from '@/api/common'
 import type { DeptTreeVO } from '@/types/org'
-import type { RoleVO } from '@/types/rbac'
 import { useAuthStore } from '@/stores/auth'
 import { useIsMobile } from '@/utils/responsive'
 
@@ -62,16 +59,16 @@ const form = reactive({
   status: 1,
 })
 const deptTree = ref<DeptTreeVO[]>([])
-const roleOptions = ref<RoleVO[]>([])
-async function loadAudienceOptions() {
-  if (!deptTree.value.length) deptApi.tree().then((d) => (deptTree.value = d))
-  if (!roleOptions.value.length) roleApi.list().then((r) => (roleOptions.value = r))
-}
+const roleOptions = ref<{ id: number; name: string }[]>([])
 const companyOptions = ref<{ id: number; name: string }[]>([])
-async function loadCompanies() {
-  if (companyOptions.value.length) return
-  const page = await companyApi.page({ page: 1, size: 200 })
-  companyOptions.value = page.records.map((c) => ({ id: c.id, name: c.shortName || c.fullName }))
+// 受众选择(部门/角色/企业)走全站 /common/options 名录接口(登录即可),
+// 不借用 dept:view/role:view/platform:company:view 门控的管理接口,避免只配了通知权限的账号误报无权限
+async function loadAudienceOptions() {
+  if (deptTree.value.length || roleOptions.value.length) return
+  const opts = await commonApi.options()
+  deptTree.value = opts.depts
+  roleOptions.value = opts.roles
+  companyOptions.value = opts.companies ?? []
 }
 function openCreate() {
   Object.assign(form, {
@@ -79,7 +76,6 @@ function openCreate() {
     targetScope: 'SELF', targetIds: [], audienceType: 'ALL', audienceIds: [],
     startAt: '', endAt: '', status: 1,
   })
-  if (isPlatform.value) loadCompanies()
   loadAudienceOptions()
   dialog.value = true
 }
@@ -97,7 +93,6 @@ function openEdit(row: AnnouncementVO) {
     endAt: row.endAt ?? '',
     status: row.status,
   })
-  if (isPlatform.value) loadCompanies()
   loadAudienceOptions()
   dialog.value = true
 }

@@ -15,7 +15,8 @@ import { moduleLabel } from '@/utils/moduleLabels'
 const auth = useAuthStore()
 const canCreate = computed(() => auth.hasPermission('PERM_user:create'))
 const canEdit = computed(() => auth.hasPermission('PERM_user:edit'))
-const canExport = computed(() => auth.hasPermission('PERM_user:export') || canEdit.value)
+// user:export 权限不存在(种子未定义),后端导出接口按 user:view 放行,这里与后端对齐
+const canExport = computed(() => auth.hasPermission('PERM_user:view'))
 
 const loading = ref(false)
 const list = ref<UserVO[]>([])

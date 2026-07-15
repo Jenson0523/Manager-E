@@ -76,7 +76,7 @@ public class AuditLogController {
     }
 
     @GetMapping("/export")
-    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:view') or hasAuthority('PERM_platform:audit:view')")
+    @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_log:export') or hasAuthority('PERM_platform:audit:view')")
     public void export(
             @RequestParam(name = "module", required = false) String module,
             @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,

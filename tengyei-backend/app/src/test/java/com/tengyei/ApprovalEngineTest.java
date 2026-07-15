@@ -37,7 +37,7 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
-    /** 选人下拉:仅审批权限(无 user:view/role:view)也能拉 /options,但 /users 仍 403 */
+    /** 选人下拉:窄权限账号(无 user:view/role:view)也能拉 /common/options,但 /users 管理接口仍 403 */
     @Test
     void pickerOptionsAccessibleWithApprovalPermOnly() throws Exception {
         var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
@@ -59,7 +59,7 @@ class ApprovalEngineTest {
             "SELECT ?, id, NOW() FROM permission WHERE code IN ('approval:view','approval:apply')", clerkRoleId);
         String tokenD = OrgTestSupport.login(mockMvc, objectMapper, userD);
 
-        mockMvc.perform(get("/api/v1/approval/options")
+        mockMvc.perform(get("/api/v1/common/options")
                 .header("Authorization", "Bearer " + tokenD))
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.users.length()").value(org.hamcrest.Matchers.greaterThan(0)))

@@ -29,8 +29,11 @@ public class ApprovalInstanceController {
         return Result.ok(Map.of("id", id));
     }
 
+    // 详情放行任一审批权限:只有发起权限的人也要能看自己发起的单。
+    // 数据权限由 service 层校验(发起人/已到达节点审批人/被抄送人/manage),不会越权看别人的单
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_approval:apply','PERM_approval:approve','PERM_approval:transfer','PERM_approval:manage'," +
+            "'PERM_platform:approval:view','PERM_platform:approval:apply','PERM_platform:approval:approve','PERM_platform:approval:transfer','PERM_platform:approval:manage')")
     public Result<ApprovalInstanceVO> detail(@PathVariable Long id) {
         return Result.ok(engineService.detail(id));
     }

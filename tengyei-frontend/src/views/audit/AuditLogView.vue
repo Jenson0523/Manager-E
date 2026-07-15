@@ -4,7 +4,9 @@ import { auditApi, loginLogApi, type AuditLogVO, type LoginLogVO } from '@/api/a
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
-const canExport = computed(() => auth.hasPermission('PERM_audit:export') || auth.hasPermission('PERM_platform:audit:export'))
+// 权限码与种子数据对齐:公司层是 log:export(导出日志),平台层只有 platform:audit:view。
+// 原来查的 audit:export/platform:audit:export 根本不存在,导致勾了"导出日志"按钮也永远置灰
+const canExport = computed(() => auth.hasPermission('PERM_log:export') || auth.hasPermission('PERM_platform:audit:view'))
 
 const activeTab = ref('audit')
 
