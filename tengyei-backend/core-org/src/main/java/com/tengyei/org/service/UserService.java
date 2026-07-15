@@ -93,32 +93,44 @@ public class UserService {
         qw.orderByDesc(User::getId);
         Page<User> result = userMapper.selectPage(new Page<>(page, size), qw);
 
+        // 整页 3 次批量查询替代每行 2 次(原 N+1,50行/页=100次查询)
+        List<Long> userIds = result.getRecords().stream().map(User::getId).toList();
+        Map<Long, List<Long>> roleIdsByUser = new java.util.HashMap<>();
+        Map<Long, List<Long>> deptIdsByUser = new java.util.HashMap<>();
+        Map<Long, String> roleNameById = new java.util.HashMap<>();
+        Map<Long, String> deptNameById = new java.util.HashMap<>();
+        if (!userIds.isEmpty()) {
+            String uin = String.join(",", userIds.stream().map(String::valueOf).toList());
+            jdbcTemplate.query(
+                "SELECT ur.user_id, ur.role_id, r.name FROM user_role ur " +
+                "JOIN role r ON r.id = ur.role_id WHERE ur.user_id IN (" + uin + ")",
+                rs -> {
+                    roleIdsByUser.computeIfAbsent(rs.getLong(1), k -> new ArrayList<>()).add(rs.getLong(2));
+                    roleNameById.put(rs.getLong(2), rs.getString(3));
+                });
+            jdbcTemplate.query(
+                "SELECT ud.user_id, ud.dept_id, d.name FROM user_dept ud " +
+                "JOIN dept d ON d.id = ud.dept_id AND d.is_deleted = 0 " +
+                "WHERE ud.user_id IN (" + uin + ") ORDER BY ud.is_primary DESC",
+                rs -> {
+                    deptIdsByUser.computeIfAbsent(rs.getLong(1), k -> new ArrayList<>()).add(rs.getLong(2));
+                    deptNameById.put(rs.getLong(2), rs.getString(3));
+                });
+        }
+
         List<UserVO> vos = new ArrayList<>();
         for (User u : result.getRecords()) {
-            List<Long> roleIds = jdbcTemplate.queryForList(
-                "SELECT role_id FROM user_role WHERE user_id = ?", Long.class, u.getId());
+            List<Long> roleIds = roleIdsByUser.getOrDefault(u.getId(), List.of());
             if (roleId != null && !roleIds.contains(roleId)) continue;
-
-            List<String> roleNames = roleIds.isEmpty() ? List.of() :
-                jdbcTemplate.queryForList(
-                    "SELECT name FROM role WHERE id IN (" +
-                    String.join(",", roleIds.stream().map(String::valueOf).toList()) + ")",
-                    String.class);
-
-            List<Long> deptIds = jdbcTemplate.queryForList(
-                "SELECT dept_id FROM user_dept WHERE user_id = ? ORDER BY is_primary DESC", Long.class, u.getId());
-            List<String> deptNames = deptIds.isEmpty() ? List.of() :
-                jdbcTemplate.queryForList(
-                    "SELECT name FROM dept WHERE id IN (" +
-                    String.join(",", deptIds.stream().map(String::valueOf).toList()) + ") AND is_deleted = 0",
-                    String.class);
+            List<Long> deptIds = deptIdsByUser.getOrDefault(u.getId(), List.of());
 
             vos.add(UserVO.builder()
                     .id(u.getId()).username(u.getUsername()).realName(u.getRealName())
                     .phone(maskPhone(u.getPhone())).email(u.getEmail()).deptId(u.getDeptId())
-                    .deptIds(deptIds).deptNames(deptNames)
+                    .deptIds(deptIds).deptNames(deptIds.stream().map(deptNameById::get).toList())
                     .branchId(u.getBranchId()).status(u.getStatus())
-                    .roleIds(roleIds).roleNames(roleNames).build());
+                    .roleIds(roleIds).roleNames(roleIds.stream().map(roleNameById::get).toList())
+                    .build());
         }
         return PageResult.of(vos, result.getTotal(), result.getCurrent(), result.getSize());
     }
@@ -234,6 +246,63 @@ public class UserService {
                 "INSERT INTO user_dept (user_id, dept_id, is_primary, created_at) VALUES (?, ?, ?, NOW())",
                 userId, did, isPrimary);
         }
+    }
+
+    /**
+     * Excel 批量导入:逐行独立创建(部分成功不回滚),失败行带行号和原因返回。
+     * 复用 create() 走同一套校验(账号全局唯一/配额/角色归属防越权)。
+     */
+    public Map<String, Object> importUsers(List<com.tengyei.org.dto.UserImportRowVO> rows) {
+        if (rows == null || rows.isEmpty()) throw new BusinessException(422, "导入文件为空");
+        if (rows.size() > 500) throw new BusinessException(422, "单次最多导入 500 行");
+        Long tenantId = TenantContext.getTenantId();
+        List<Map<String, Object>> errors = new ArrayList<>();
+        int success = 0;
+        for (int i = 0; i < rows.size(); i++) {
+            var row = rows.get(i);
+            int rowNo = i + 2; // Excel 行号(含表头)
+            try {
+                if (!StringUtils.hasText(row.getRealName()) || !StringUtils.hasText(row.getUsername())
+                        || !StringUtils.hasText(row.getPassword()) || !StringUtils.hasText(row.getPhone())) {
+                    throw new BusinessException(422, "姓名/账号/初始密码/手机为必填");
+                }
+                if (!PasswordRule.isValid(row.getPassword().trim())) {
+                    throw new BusinessException(422, PasswordRule.MESSAGE);
+                }
+                List<Long> roleIds = new ArrayList<>();
+                if (StringUtils.hasText(row.getRoleNames())) {
+                    for (String name : row.getRoleNames().split("[,，]")) {
+                        if (!StringUtils.hasText(name)) continue;
+                        List<Long> ids = jdbcTemplate.queryForList(
+                            "SELECT id FROM role WHERE tenant_id = ? AND name = ? AND is_deleted = 0 AND status = 1",
+                            Long.class, tenantId, name.trim());
+                        if (ids.isEmpty()) throw new BusinessException(422, "角色「" + name.trim() + "」不存在");
+                        roleIds.add(ids.get(0));
+                    }
+                }
+                UserCreateDTO dto = new UserCreateDTO();
+                dto.setUsername(row.getUsername().trim());
+                dto.setRealName(row.getRealName().trim());
+                dto.setPassword(row.getPassword().trim());
+                dto.setPhone(row.getPhone().trim());
+                dto.setEmail(StringUtils.hasText(row.getEmail()) ? row.getEmail().trim() : null);
+                dto.setRoleIds(roleIds);
+                create(dto);
+                success++;
+            } catch (BusinessException e) {
+                errors.add(Map.of("row", rowNo, "username",
+                    row.getUsername() == null ? "" : row.getUsername(), "msg", e.getMessage()));
+            } catch (Exception e) {
+                errors.add(Map.of("row", rowNo, "username",
+                    row.getUsername() == null ? "" : row.getUsername(), "msg", "数据格式错误"));
+            }
+        }
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("total", rows.size());
+        result.put("success", success);
+        result.put("failed", errors.size());
+        result.put("errors", errors);
+        return result;
     }
 
     public List<UserExportVO> export(String keyword, Long deptId) {

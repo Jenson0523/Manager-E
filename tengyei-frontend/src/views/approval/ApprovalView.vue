@@ -272,6 +272,56 @@ async function cancelInstance() {
   loadTab(activeTab.value)
 }
 
+/* 催办:发起人/流程管理员提醒当前审批人,后端每单每小时限一次 */
+async function urgeInstance() {
+  if (!detail.value) return
+  await approvalApi.urge(detail.value.id)
+  ElMessage.success('已催办,已通知当前审批人')
+}
+
+/* 打印:新窗口渲染审批单(基本信息+表单+流转记录)后调浏览器打印 */
+function printDetail() {
+  const d = detail.value
+  if (!d) return
+  const esc = (s: unknown) =>
+    String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const fields = detailFormFields.value
+    .map((f) => `<tr><td class="k">${esc(f.label)}</td><td>${esc(f.value)}</td></tr>`)
+    .join('')
+  const nodeStatus = (s: string) =>
+    ({ APPROVING: '审批中', WAITING: '待流转', APPROVED: '已通过', REJECTED: '已驳回', CANCELED: '已撤销' }[s] ?? s)
+  const nodes = (d.nodes ?? [])
+    .filter((n) => n.approverType !== 'CC')
+    .map((n) => `<tr><td>${esc(n.nodeName)}</td><td>${esc(n.approverName ?? '')}</td>` +
+      `<td>${esc(nodeStatus(n.status))}</td>` +
+      `<td>${esc(fmtTime(n.actionAt))}</td><td>${esc(n.comment ?? '')}</td></tr>`)
+    .join('')
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>审批单 ${esc(d.instanceNo)}</title>
+    <style>
+      body{font-family:"Microsoft YaHei",sans-serif;padding:24px;color:#333}
+      h2{text-align:center;margin-bottom:4px} .sub{text-align:center;color:#888;margin-bottom:20px;font-size:13px}
+      table{width:100%;border-collapse:collapse;margin-bottom:18px}
+      td,th{border:1px solid #ccc;padding:6px 10px;font-size:13px;text-align:left}
+      td.k{width:130px;background:#f7f7f7} h4{margin:14px 0 6px}
+    </style></head><body>
+    <h2>${esc(d.formName || d.formType)}</h2>
+    <div class="sub">单号:${esc(d.instanceNo)}　状态:${esc(statusLabel(d.status))}</div>
+    <table>
+      <tr><td class="k">申请人</td><td>${esc(d.applicantName)}</td></tr>
+      <tr><td class="k">申请时间</td><td>${esc(fmtTime(d.createdAt))}</td></tr>
+      ${fields}
+    </table>
+    <h4>流转记录</h4>
+    <table><tr><th>节点</th><th>审批人</th><th>状态</th><th>处理时间</th><th>意见</th></tr>${nodes}</table>
+    </body></html>`
+  const win = window.open('', '_blank', 'width=800,height=900')
+  if (!win) { ElMessage.error('浏览器拦截了打印窗口,请允许弹窗后重试'); return }
+  win.document.write(html)
+  win.document.close()
+  win.focus()
+  win.print()
+}
+
 /* 转交 */
 const isMyTurn = computed(() =>
   detail.value?.nodes.some(
@@ -995,6 +1045,13 @@ async function refreshStats() {
       </template>
       <template #footer>
         <el-button @click="detailDialog = false">关闭</el-button>
+        <el-button @click="printDetail">打印</el-button>
+        <el-button
+          v-if="detail?.status === 'PENDING' && (isMyApply || canManage)"
+          @click="urgeInstance"
+        >
+          催办
+        </el-button>
         <template v-if="detail?.status === 'RETURNED' && isMyApply">
           <el-tooltip :disabled="canCancel" content="无撤回权限,请联系管理员分配" placement="top">
             <el-button :disabled="!canCancel" @click="cancelInstance">撤回</el-button>

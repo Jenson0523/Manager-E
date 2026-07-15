@@ -43,6 +43,26 @@ public class RoleService {
         return r.getId();
     }
 
+    /** 复制角色:名称加"副本"、编码加时间戳后缀,权限一并复制。新建相似角色时免去重配权限 */
+    @Transactional
+    public Long copy(Long id) {
+        Role src = requireRole(id);
+        Role r = new Role();
+        r.setTenantId(src.getTenantId());
+        r.setName(src.getName() + "副本");
+        r.setCode(src.getCode() + "_copy_" + (System.currentTimeMillis() % 100000));
+        r.setDescription(src.getDescription());
+        r.setDataScope(src.getDataScope());
+        r.setIsPreset(0);
+        r.setStatus(1);
+        roleMapper.insert(r);
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id, permission_id, created_at) " +
+            "SELECT ?, permission_id, NOW() FROM role_permission WHERE role_id = ?",
+            r.getId(), id);
+        return r.getId();
+    }
+
     public void update(Long id, RoleSaveDTO dto) {
         Role r = requireRole(id);
         r.setName(dto.getName());

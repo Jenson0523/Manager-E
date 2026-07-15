@@ -22,8 +22,11 @@ public class PlatformUserController {
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_platform:user:view')")
-    public Result<List<PlatformUserVO>> list(@RequestParam(name = "keyword", required = false) String keyword) {
-        return Result.ok(service.listUsers(keyword));
+    public Result<com.tengyei.common.response.PageResult<PlatformUserVO>> list(
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "page", defaultValue = "1") long page,
+            @RequestParam(name = "size", defaultValue = "10") long size) {
+        return Result.ok(service.listUsers(keyword, page, size));
     }
 
     @PostMapping

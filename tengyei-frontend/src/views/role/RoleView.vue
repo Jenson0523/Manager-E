@@ -166,6 +166,17 @@ async function deleteRole(role: RoleVO) {
   }
 }
 
+/* 复制角色:名称加"副本"、权限一并复制,建相似角色免重配权限 */
+async function copyRole(role: RoleVO) {
+  try {
+    await roleApi.copy(role.id)
+    ElMessage.success(`已复制角色「${role.name}」,可编辑副本的名称与权限`)
+    fetchRoles()
+  } catch {
+    // API error already surfaced by response interceptor
+  }
+}
+
 const noActiveRole = computed(() => !activeRole.value)
 
 onMounted(() => {
@@ -193,6 +204,7 @@ onMounted(() => {
         <div class="role-meta">{{ role.code }}</div>
         <div class="role-actions">
           <el-button v-if="auth.hasPermission('PERM_role:edit')" link type="primary" size="small" @click.stop="openEdit(role)">编辑</el-button>
+          <el-button v-if="auth.hasPermission('PERM_role:create')" link type="primary" size="small" @click.stop="copyRole(role)">复制</el-button>
           <el-button
             v-if="!role.isPreset && auth.hasPermission('PERM_role:delete')"
             link

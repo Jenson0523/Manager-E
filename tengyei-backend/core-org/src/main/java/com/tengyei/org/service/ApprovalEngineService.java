@@ -803,6 +803,52 @@ public class ApprovalEngineService {
             "approval", instanceId);
     }
 
+    /** 手动催办:给当前节点全部审批人发站内消息。发起人/manage 可催,每单每小时限一次防骚扰 */
+    public void urge(Long instanceId, Long operatorId, String operatorName) {
+        Long tenantId = TenantContext.getTenantId();
+        WfInstance instance = instanceMapper.selectById(instanceId);
+        if (instance == null || !instance.getTenantId().equals(tenantId)) {
+            throw new BusinessException(404, "审批实例不存在");
+        }
+        if (!"PENDING".equals(instance.getStatus())) {
+            throw new BusinessException(409, "该审批已结束，无需催办");
+        }
+        if (!instance.getApplicantId().equals(operatorId) && !hasManageAuthority()) {
+            throw new BusinessException(403, "仅发起人或流程管理员可催办");
+        }
+        Long recent = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM wf_record WHERE instance_id = ? AND action = 'URGE' AND created_at > ?",
+            Long.class, instanceId, LocalDateTime.now().minusHours(1));
+        if (recent != null && recent > 0) {
+            throw new BusinessException(429, "一小时内已催办过，请稍后再试");
+        }
+
+        List<WfNode> active = nodeMapper.selectList(new LambdaQueryWrapper<WfNode>()
+            .eq(WfNode::getInstanceId, instanceId)
+            .eq(WfNode::getNodeKey, instance.getCurrentNode())
+            .eq(WfNode::getStatus, "APPROVING"));
+        if (active.isEmpty()) throw new BusinessException(409, "当前节点无待处理审批人");
+
+        WfRecord record = new WfRecord();
+        record.setTenantId(tenantId);
+        record.setInstanceId(instanceId);
+        record.setNodeId(active.get(0).getId());
+        record.setOperatorId(operatorId);
+        record.setOperatorName(operatorName);
+        record.setAction("URGE");
+        record.setBeforeStatus("PENDING");
+        record.setAfterStatus("PENDING");
+        recordMapper.insert(record);
+
+        for (WfNode n : active) {
+            if (n.getApproverId() == null) continue;
+            noticeService.send(tenantId, n.getApproverId(),
+                "APPROVAL_TODO", "审批催办提醒",
+                operatorName + " 催办审批 " + instance.getInstanceNo() + "，请尽快处理",
+                "approval", instanceId);
+        }
+    }
+
     /** 我的代理规则(一人一条),无则 null */
     public WfDelegate delegateGet(Long userId) {
         return delegateMapper.selectOne(new LambdaQueryWrapper<WfDelegate>()

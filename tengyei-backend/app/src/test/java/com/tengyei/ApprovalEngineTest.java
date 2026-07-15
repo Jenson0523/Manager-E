@@ -37,6 +37,37 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 催办:发起人可催办,一小时内重复催办 429 */
+    @Test
+    void urgeOncePerHour() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String tokenA = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        long uidB = seedPlainUser(seeded.tenantId(), "urge_b_");
+
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + uidB + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"urgef\",\"formName\":\"催办单\",\"processKey\":\"URG\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"urgef\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long id = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/urge")
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/urge")
+                .header("Authorization", "Bearer " + tokenA))
+                .andExpect(jsonPath("$.code").value(429));
+    }
+
     /** 管理兜底:非审批人但持 manage 权限者可代为转交(审批人离职/停用卡单救援) */
     @Test
     void managerCanTransferStuckNode() throws Exception {

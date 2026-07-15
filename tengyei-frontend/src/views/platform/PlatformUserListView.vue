@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { platformRoleApi, platformUserApi } from '@/api/platform'
 import { useAuthStore } from '@/stores/auth'
@@ -10,15 +10,11 @@ const auth = useAuthStore()
 
 const loading = ref(false)
 const list = ref<PlatformUserVO[]>([])
+const total = ref(0)
 const query = reactive({
   keyword: '',
   page: 1,
   size: 10,
-})
-
-const pagedList = computed(() => {
-  const start = (query.page - 1) * query.size
-  return list.value.slice(start, start + query.size)
 })
 
 const roles = ref<PlatformRoleVO[]>([])
@@ -35,7 +31,13 @@ async function fetchRoles() {
 async function fetchList() {
   loading.value = true
   try {
-    list.value = await platformUserApi.list({ keyword: query.keyword || undefined })
+    const res = await platformUserApi.list({
+      keyword: query.keyword || undefined,
+      page: query.page,
+      size: query.size,
+    })
+    list.value = res.records
+    total.value = res.total
   } finally {
     loading.value = false
   }
@@ -214,7 +216,7 @@ onMounted(() => {
       </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="pagedList" stripe>
+    <el-table v-loading="loading" :data="list" stripe>
       <el-table-column prop="realName" label="姓名" width="130" />
       <el-table-column prop="username" label="账号" width="160" />
       <el-table-column prop="phone" label="手机" width="140" />
@@ -285,10 +287,10 @@ onMounted(() => {
     <el-pagination
       class="pager"
       layout="total, prev, pager, next"
-      :total="list.length"
+      :total="total"
       :current-page="query.page"
       :page-size="query.size"
-      @current-change="(p: number) => { query.page = p }"
+      @current-change="(p: number) => { query.page = p; fetchList() }"
     />
 
     <el-dialog v-model="userDialog" :title="editingId ? '编辑平台账号' : '新增平台账号'" width="520px">

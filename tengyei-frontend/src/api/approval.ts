@@ -28,6 +28,8 @@ export const approvalApi = {
   /** fromUserId:管理员代为转交时指明原审批人(审批人本人转交无需传) */
   transfer: (id: number, targetUserId: number, fromUserId?: number) =>
     request.put<never, void>(`/v1/approval/instances/${id}/transfer`, { targetUserId, fromUserId }),
+  /** 催办:发起人/流程管理员提醒当前审批人,每单每小时限一次 */
+  urge: (id: number) => request.put<never, void>(`/v1/approval/instances/${id}/urge`),
   resubmit: (id: number, formData?: Record<string, unknown>) =>
     request.put<never, void>(`/v1/approval/instances/${id}/resubmit`, { formData }),
   addSign: (id: number, targetUserId: number, position: 'PRE' | 'POST') =>

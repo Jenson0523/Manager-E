@@ -56,6 +56,15 @@ public class ApprovalInstanceController {
         return Result.ok();
     }
 
+    /** 催办:发起人/流程管理员提醒当前审批人尽快处理,每单每小时限一次 */
+    @PutMapping("/{id}/urge")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_approval:manage','PERM_platform:approval:apply','PERM_platform:approval:manage')")
+    @Auditable(module = "审批", actionType = "UPDATE", description = "审批催办")
+    public Result<Void> urge(@PathVariable Long id) {
+        engineService.urge(id, TenantContext.getUserId(), TenantContext.getUserName());
+        return Result.ok();
+    }
+
     /** 被退回后重新提交(可携带修改后的表单数据) */
     @PutMapping("/{id}/resubmit")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")

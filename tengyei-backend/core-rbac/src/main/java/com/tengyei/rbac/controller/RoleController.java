@@ -33,6 +33,13 @@ public class RoleController {
         return Result.ok(Map.of("id", roleService.create(dto)));
     }
 
+    @PostMapping("/{id}/copy")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_role:create')")
+    @Auditable(module = "角色管理", actionType = "CREATE", description = "复制角色")
+    public Result<Map<String, Long>> copy(@PathVariable(name="id") Long id) {
+        return Result.ok(Map.of("id", roleService.copy(id)));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_role:edit')")
     @Auditable(module = "角色管理", actionType = "UPDATE", description = "编辑角色")

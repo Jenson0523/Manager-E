@@ -66,6 +66,41 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
+    /** Excel 导入:合法行成功入库,非法行(弱密码)带行号报错,互不影响 */
+    @Test
+    void importUsersPartialSuccess() throws Exception {
+        var ok = new com.tengyei.org.dto.UserImportRowVO();
+        ok.setRealName("导入甲");
+        ok.setUsername("imp_ok_" + System.nanoTime());
+        ok.setPassword("Ok@2026abc");
+        ok.setPhone("13812340001");
+        ok.setRoleNames("企业管理员");
+        var bad = new com.tengyei.org.dto.UserImportRowVO();
+        bad.setRealName("导入乙");
+        bad.setUsername("imp_bad_" + System.nanoTime());
+        bad.setPassword("123"); // 弱密码,应失败
+        bad.setPhone("13812340002");
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        com.alibaba.excel.EasyExcel.write(bos, com.tengyei.org.dto.UserImportRowVO.class)
+            .sheet().doWrite(java.util.List.of(ok, bad));
+
+        var file = new org.springframework.mock.web.MockMultipartFile(
+            "file", "users.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bos.toByteArray());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .multipart("/api/v1/users/import")
+                .file(file)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.success").value(1))
+                .andExpect(jsonPath("$.data.failed").value(1))
+                .andExpect(jsonPath("$.data.errors[0].row").value(3));
+
+        Long created = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM user WHERE username = ?", Long.class, ok.getUsername());
+        org.junit.jupiter.api.Assertions.assertEquals(1, created);
+    }
+
     /** 改密踢会话:管理员重置密码后,该用户改密前签发的 token 立即失效,新密码登录恢复 */
     @Test
     void resetPasswordInvalidatesOldTokens() throws Exception {

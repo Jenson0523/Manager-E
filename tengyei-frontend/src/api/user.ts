@@ -13,6 +13,15 @@ export const userApi = {
   }) => request.get<never, PageResult<UserVO>>('/v1/users', { params }),
   quota: () => request.get<never, { used: number; max: number | null }>('/v1/users/quota'),
   create: (data: UserCreateDTO) => request.post<never, IdResult>('/v1/users', data),
+  /** Excel 批量导入,返回 {total, success, failed, errors:[{row, username, msg}]} */
+  importUsers: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return request.post<
+      never,
+      { total: number; success: number; failed: number; errors: { row: number; username: string; msg: string }[] }
+    >('/v1/users/import', fd)
+  },
   update: (id: number, data: UserUpdateDTO) => request.put<never, void>(`/v1/users/${id}`, data),
   changeStatus: (id: number, status: number) =>
     request.put<never, void>(`/v1/users/${id}/status`, { status }),

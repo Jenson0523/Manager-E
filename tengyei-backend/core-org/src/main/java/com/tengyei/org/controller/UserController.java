@@ -67,6 +67,38 @@ public class UserController {
             .doWrite(data);
     }
 
+    /** 导入模板下载(含一行示例) */
+    @GetMapping("/import-template")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:create')")
+    public void importTemplate(HttpServletResponse response) throws IOException {
+        var example = new com.tengyei.org.dto.UserImportRowVO();
+        example.setRealName("张三");
+        example.setUsername("zhangsan");
+        example.setPassword("Zs@2026abc");
+        example.setPhone("13800000000");
+        example.setEmail("zhangsan@example.com");
+        example.setRoleNames("出纳");
+        String fileName = URLEncoder.encode("人员导入模板", StandardCharsets.UTF_8).replace("+", "%20");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Content-Disposition", "attachment;filename*=UTF-8''" + fileName + ".xlsx");
+        response.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+        EasyExcel.write(response.getOutputStream(), com.tengyei.org.dto.UserImportRowVO.class)
+            .sheet("人员导入").doWrite(List.of(example));
+    }
+
+    /** Excel 批量导入,逐行校验,返回成功数与失败明细 */
+    @PostMapping("/import")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:create')")
+    @Auditable(module = "人员管理", actionType = "CREATE", description = "Excel批量导入人员")
+    public Result<Map<String, Object>> importUsers(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws IOException {
+        List<com.tengyei.org.dto.UserImportRowVO> rows = EasyExcel
+            .read(file.getInputStream(), com.tengyei.org.dto.UserImportRowVO.class, null)
+            .sheet().doReadSync();
+        return Result.ok(userService.importUsers(rows));
+    }
+
     @PutMapping("/batch/status")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_user:edit')")
     @Auditable(module = "人员管理", actionType = "BATCH_UPDATE", description = "批量变更人员状态")

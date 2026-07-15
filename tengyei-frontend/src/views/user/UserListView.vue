@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import { Edit, ArrowDown } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import { roleApi, permissionApi } from '@/api/rbac'
@@ -10,6 +10,7 @@ import type { UserVO, UserCreateDTO, UserUpdateDTO } from '@/types/user'
 import type { RoleVO } from '@/types/rbac'
 import type { DeptTreeVO } from '@/types/org'
 import { strongPasswordRule, strongPasswordPattern, PASSWORD_TIP } from '@/utils/password'
+import { downloadExcel } from '@/utils/download'
 import { moduleLabel } from '@/utils/moduleLabels'
 
 const auth = useAuthStore()
@@ -104,6 +105,33 @@ async function exportList() {
     })
   } finally {
     exporting.value = false
+  }
+}
+
+/* ---- Excel 批量导入 ---- */
+const importDialog = ref(false)
+const importing = ref(false)
+const importResult = ref<{ total: number; success: number; failed: number; errors: { row: number; username: string; msg: string }[] } | null>(null)
+
+function openImport() {
+  importResult.value = null
+  importDialog.value = true
+}
+async function downloadImportTemplate() {
+  await downloadExcel('/v1/users/import-template', {}, '人员导入模板.xlsx')
+}
+async function onImportFile(opt: UploadRequestOptions) {
+  importing.value = true
+  try {
+    importResult.value = await userApi.importUsers(opt.file as File)
+    if (importResult.value.failed === 0) {
+      ElMessage.success(`导入完成,成功 ${importResult.value.success} 人`)
+    } else {
+      ElMessage.warning(`导入完成:成功 ${importResult.value.success} 人,失败 ${importResult.value.failed} 行,详见下方明细`)
+    }
+    fetchList()
+  } finally {
+    importing.value = false
   }
 }
 
@@ -417,6 +445,7 @@ onMounted(() => {
       </el-select>
       <el-button type="primary" @click="onSearch">搜索</el-button>
       <el-button :disabled="!canExport" :loading="exporting" @click="exportList">导出</el-button>
+      <el-button v-if="canCreate" @click="openImport">导入</el-button>
       <el-button v-if="canCreate" type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
@@ -604,6 +633,41 @@ onMounted(() => {
       <template #footer>
         <el-button @click="batchRoleDialog = false">取消</el-button>
         <el-button type="primary" @click="submitBatchRoles">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Excel 批量导入 -->
+    <el-dialog v-model="importDialog" title="批量导入人员" width="560px">
+      <p style="font-size: 13px; color: #606266; margin: 0 0 12px">
+        1. <el-button link type="primary" @click="downloadImportTemplate">下载导入模板</el-button>
+        按模板填写(姓名/账号/初始密码/手机必填,角色填角色名称,多个用逗号分隔)<br />
+        2. 上传填好的文件,单次最多 500 行;失败行不影响成功行,失败原因见下方明细
+      </p>
+      <el-upload
+        drag
+        accept=".xlsx,.xls"
+        :show-file-list="false"
+        :http-request="onImportFile"
+        :disabled="importing"
+      >
+        <div style="padding: 24px 0">
+          {{ importing ? '导入中...' : '点击或拖拽 Excel 文件到此处上传' }}
+        </div>
+      </el-upload>
+      <div v-if="importResult" style="margin-top: 14px">
+        <el-alert
+          :type="importResult.failed === 0 ? 'success' : 'warning'"
+          :title="`共 ${importResult.total} 行:成功 ${importResult.success},失败 ${importResult.failed}`"
+          :closable="false"
+        />
+        <el-table v-if="importResult.errors.length" :data="importResult.errors" size="small" max-height="220" style="margin-top: 8px">
+          <el-table-column prop="row" label="行号" width="70" />
+          <el-table-column prop="username" label="账号" width="140" />
+          <el-table-column prop="msg" label="失败原因" />
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="importDialog = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>

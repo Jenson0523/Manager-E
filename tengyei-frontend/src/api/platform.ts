@@ -20,8 +20,8 @@ export const platformRoleApi = {
 }
 
 export const platformUserApi = {
-  list: (params: { keyword?: string }) =>
-    request.get<never, PlatformUserVO[]>('/v1/platform/users', { params }),
+  list: (params: { keyword?: string; page?: number; size?: number }) =>
+    request.get<never, import('@/types/common').PageResult<PlatformUserVO>>('/v1/platform/users', { params }),
   create: (data: PlatformUserDTO) => request.post<never, { id: number }>('/v1/platform/users', data),
   update: (id: number, data: PlatformUserDTO) =>
     request.put<never, void>(`/v1/platform/users/${id}`, data),

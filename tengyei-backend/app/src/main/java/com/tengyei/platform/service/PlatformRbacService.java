@@ -94,30 +94,46 @@ public class PlatformRbacService {
 
     /* ===================== 平台账号 ===================== */
 
-    public List<PlatformUserVO> listUsers(String keyword) {
-        StringBuilder sql = new StringBuilder(
-            "SELECT id, username, real_name, phone, email, status, is_super_admin FROM `user` " +
-            "WHERE tenant_id = 0 AND is_deleted = 0");
+    /** 服务端分页 + 角色整页批量查询(替代原全量返回+每行2次查询) */
+    public com.tengyei.common.response.PageResult<PlatformUserVO> listUsers(String keyword, long page, long size) {
+        StringBuilder where = new StringBuilder("WHERE tenant_id = 0 AND is_deleted = 0");
         List<Object> params = new ArrayList<>();
         if (keyword != null && !keyword.isBlank()) {
-            sql.append(" AND (username LIKE ? OR real_name LIKE ? OR phone LIKE ?)");
+            where.append(" AND (username LIKE ? OR real_name LIKE ? OR phone LIKE ?)");
             String like = "%" + keyword + "%";
             params.add(like); params.add(like); params.add(like);
         }
-        sql.append(" ORDER BY id");
-        return jdbc.query(sql.toString(), params.toArray(), (rs, i) -> {
-            long uid = rs.getLong("id");
-            List<Long> roleIds = jdbc.queryForList(
-                "SELECT r.id FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
-                Long.class, uid);
-            List<String> roleNames = jdbc.queryForList(
-                "SELECT r.name FROM role r JOIN user_role ur ON ur.role_id = r.id WHERE ur.user_id = ?",
-                String.class, uid);
-            return PlatformUserVO.builder()
-                .id(uid).username(rs.getString("username")).realName(rs.getString("real_name"))
+        Long total = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM `user` " + where, Long.class, params.toArray());
+
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add(size);
+        pageParams.add((page - 1) * size);
+        List<PlatformUserVO> records = jdbc.query(
+            "SELECT id, username, real_name, phone, email, status, is_super_admin FROM `user` " +
+            where + " ORDER BY id LIMIT ? OFFSET ?",
+            pageParams.toArray(), (rs, i) -> PlatformUserVO.builder()
+                .id(rs.getLong("id")).username(rs.getString("username")).realName(rs.getString("real_name"))
                 .phone(rs.getString("phone")).email(rs.getString("email")).status(rs.getInt("status"))
-                .isSuperAdmin(rs.getInt("is_super_admin")).roleIds(roleIds).roleNames(roleNames).build();
-        });
+                .isSuperAdmin(rs.getInt("is_super_admin"))
+                .roleIds(new ArrayList<>()).roleNames(new ArrayList<>()).build());
+
+        if (!records.isEmpty()) {
+            java.util.Map<Long, PlatformUserVO> byId = new java.util.HashMap<>();
+            records.forEach(v -> byId.put(v.getId(), v));
+            String uin = String.join(",", records.stream().map(v -> String.valueOf(v.getId())).toList());
+            jdbc.query(
+                "SELECT ur.user_id, r.id, r.name FROM role r JOIN user_role ur ON ur.role_id = r.id " +
+                "WHERE ur.user_id IN (" + uin + ")",
+                rs -> {
+                    PlatformUserVO v = byId.get(rs.getLong(1));
+                    if (v != null) {
+                        v.getRoleIds().add(rs.getLong(2));
+                        v.getRoleNames().add(rs.getString(3));
+                    }
+                });
+        }
+        return com.tengyei.common.response.PageResult.of(records, total != null ? total : 0, page, size);
     }
 
     @Transactional
