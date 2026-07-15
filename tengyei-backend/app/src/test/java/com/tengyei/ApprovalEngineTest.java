@@ -37,6 +37,53 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 管理兜底:非审批人但持 manage 权限者可代为转交(审批人离职/停用卡单救援) */
+    @Test
+    void managerCanTransferStuckNode() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String tokenA = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+
+        long uidB = seedPlainUser(seeded.tenantId(), "appr_b_");
+        long uidC = seedPlainUser(seeded.tenantId(), "appr_c_");
+
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"SPECIFIC_USER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1,\"condition\":null,\"targetUserId\":" + uidB + "}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"rescue\",\"formName\":\"救援单\",\"processKey\":\"RSQ\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"rescue\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long id = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // A 不是审批人(审批人是 B),但持 manage → 单审批人节点无需 fromUserId 直接代转给 C
+        mockMvc.perform(put("/api/v1/approval/instances/" + id + "/transfer")
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetUserId\":" + uidC + "}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        Long approver = jdbcTemplate.queryForObject(
+            "SELECT approver_id FROM wf_node WHERE instance_id = ? AND status = 'APPROVING'", Long.class, id);
+        org.junit.jupiter.api.Assertions.assertEquals(uidC, approver);
+    }
+
+    private long seedPlainUser(long tenantId, String prefix) {
+        String uname = prefix + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id, user_no, username, password, real_name, phone, " +
+            "is_super_admin, status, pwd_reset_required, is_deleted, created_at, updated_at) " +
+            "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())",
+            tenantId, "U-" + prefix, uname, OrgTestSupport.ADMIN_PWD_HASH, prefix, "13900001111");
+        return jdbcTemplate.queryForObject("SELECT id FROM user WHERE username = ?", Long.class, uname);
+    }
+
     /** 选人下拉:窄权限账号(无 user:view/role:view)也能拉 /common/options,但 /users 管理接口仍 403 */
     @Test
     void pickerOptionsAccessibleWithApprovalPermOnly() throws Exception {

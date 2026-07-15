@@ -52,6 +52,10 @@ public class JwtService {
         return val != null ? val.toString() : null;
     }
 
+    public java.util.Date getIssuedAt(String token) {
+        return getClaims(token).getIssuedAt();
+    }
+
     public boolean isValid(String token) {
         try {
             if (token == null || token.isBlank()) return false;

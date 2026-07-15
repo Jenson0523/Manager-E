@@ -37,8 +37,9 @@ public class MeController {
             throw new BusinessException(400, "原密码错误");
         }
 
+        // pwd_changed_at:改密后旧 token 全部作废(JwtAuthFilter 校验签发时间),需重新登录
         jdbcTemplate.update(
-            "UPDATE `user` SET password = ?, pwd_reset_required = 0, login_fail_count = 0 WHERE id = ?",
+            "UPDATE `user` SET password = ?, pwd_reset_required = 0, login_fail_count = 0, pwd_changed_at = NOW() WHERE id = ?",
             passwordEncoder.encode(dto.getNewPassword()), userId);
         return Result.ok();
     }

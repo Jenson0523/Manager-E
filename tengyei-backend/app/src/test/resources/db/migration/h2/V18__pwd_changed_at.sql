@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD COLUMN pwd_changed_at TIMESTAMP NULL;

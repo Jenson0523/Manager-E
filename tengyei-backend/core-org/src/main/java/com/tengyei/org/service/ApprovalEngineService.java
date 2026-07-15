@@ -741,6 +741,14 @@ public class ApprovalEngineService {
     /** 转交：当前审批人把自己的待办节点移交给同租户其他用户 */
     @Transactional
     public void transfer(Long instanceId, Long targetUserId, Long operatorId, String operatorName) {
+        transfer(instanceId, targetUserId, null, operatorId, operatorName);
+    }
+
+    /**
+     * 转交。审批人本人可转交自己的节点;持 manage 权限者可代为转交任意审批人的节点
+     * (审批人离职/停用后单据卡死的管理兜底),多审批人节点需用 fromUserId 指明转交谁的。
+     */
+    public void transfer(Long instanceId, Long targetUserId, Long fromUserId, Long operatorId, String operatorName) {
         Long tenantId = TenantContext.getTenantId();
         WfInstance instance = instanceMapper.selectById(instanceId);
         if (instance == null || !instance.getTenantId().equals(tenantId)) {
@@ -756,7 +764,15 @@ public class ApprovalEngineService {
         WfNode node = active.stream()
             .filter(n -> operatorId.equals(n.getApproverId()))
             .findFirst()
-            .orElseThrow(() -> new BusinessException(403, "无权转交该审批"));
+            .orElseGet(() -> {
+                if (!hasManageAuthority()) throw new BusinessException(403, "无权转交该审批");
+                if (fromUserId != null) {
+                    return active.stream().filter(n -> fromUserId.equals(n.getApproverId())).findFirst()
+                        .orElseThrow(() -> new BusinessException(422, "指定的原审批人不在当前节点"));
+                }
+                if (active.size() == 1) return active.get(0);
+                throw new BusinessException(422, "当前节点有多个审批人，请指定要转交谁的审批");
+            });
         if (active.stream().anyMatch(n -> targetUserId.equals(n.getApproverId()))) {
             throw new BusinessException(409, "目标用户已是该节点审批人");
         }

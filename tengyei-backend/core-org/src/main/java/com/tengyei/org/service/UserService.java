@@ -393,7 +393,8 @@ public class UserService {
         u.setPwdResetRequired(1);
         u.setLoginFailCount(0);
         userMapper.updateById(u);
-        jdbcTemplate.update("UPDATE `user` SET locked_until = NULL WHERE id = ?", id);
+        // 重置密码同时作废该用户所有旧 token(处置密码泄露时立即踢下线)
+        jdbcTemplate.update("UPDATE `user` SET locked_until = NULL, pwd_changed_at = NOW() WHERE id = ?", id);
     }
 
     private User requireUser(Long id) {

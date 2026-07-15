@@ -65,22 +65,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 String dataScope = jwtService.getDataScope(token);
                 String realName = jwtService.getRealName(token);
                 // 鉴权与界面同源:权限每请求实时查库,不再用登录时冻结在 JWT 里的快照。
-                // 管理员改权限立刻生效,停用/删除的用户立刻失权。
+                // 管理员改权限立刻生效,停用/删除的用户立刻失权,改密后旧 token 立刻作废。
                 // ponytail: 每请求+2条索引查询,QPS 上来后给此处加短TTL本地缓存
-                List<String> permissions = loadPermissions(userId);
+                List<String> permissions = loadPermissions(userId, jwtService.getIssuedAt(token));
+                // permissions == null(用户不存在/停用/token早于改密时间)→ 不设认证,按未登录处理
+                if (permissions != null) {
+                    TenantContext.setTenantId(tenantId);
+                    TenantContext.setUserId(userId);
+                    TenantContext.setBranchId(branchId);
+                    TenantContext.setDataScope(dataScope);
+                    TenantContext.setUserName(realName);
 
-                TenantContext.setTenantId(tenantId);
-                TenantContext.setUserId(userId);
-                TenantContext.setBranchId(branchId);
-                TenantContext.setDataScope(dataScope);
-                TenantContext.setUserName(realName);
+                    List<SimpleGrantedAuthority> authorities = permissions.stream()
+                            .map(p -> new SimpleGrantedAuthority("PERM_" + p))
+                            .collect(Collectors.toList());
 
-                List<SimpleGrantedAuthority> authorities = permissions.stream()
-                        .map(p -> new SimpleGrantedAuthority("PERM_" + p))
-                        .collect(Collectors.toList());
-
-                var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
-                SecurityContextHolder.getContext().setAuthentication(auth);
+                    var auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
             }
         } catch (Exception ignored) {
             // Invalid token — filter silently; endpoint will return 401
@@ -92,11 +94,24 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
     }
 
-    private List<String> loadPermissions(Long userId) {
+    /** 返回 null 表示会话无效:用户不存在/已停用,或 token 签发时间早于最后一次改密 */
+    private List<String> loadPermissions(Long userId, java.util.Date tokenIssuedAt) {
         var rows = jdbcTemplate.queryForList(
-            "SELECT is_super_admin, tenant_id FROM `user` WHERE id = ? AND is_deleted = 0 AND status = 1",
+            "SELECT is_super_admin, tenant_id, pwd_changed_at FROM `user` WHERE id = ? AND is_deleted = 0 AND status = 1",
             userId);
-        if (rows.isEmpty()) return List.of();
+        if (rows.isEmpty()) return null;
+        // 改密踢会话:重置/修改密码后所有旧 token 作废。
+        // 驱动差异:MySQL Connector/J 8 返回 LocalDateTime,H2 返回 Timestamp,两种都要认
+        Object pca = rows.get(0).get("pwd_changed_at");
+        java.time.Instant pwdChangedAt = null;
+        if (pca instanceof java.util.Date d) pwdChangedAt = d.toInstant();
+        else if (pca instanceof java.time.LocalDateTime ldt) {
+            pwdChangedAt = ldt.atZone(java.time.ZoneId.systemDefault()).toInstant();
+        }
+        if (pwdChangedAt != null && tokenIssuedAt != null
+                && tokenIssuedAt.toInstant().isBefore(pwdChangedAt)) {
+            return null;
+        }
         Object su = rows.get(0).get("is_super_admin");
         if (su != null && ((Number) su).intValue() == 1) return List.of("*");
         Long tenantId = ((Number) rows.get(0).get("tenant_id")).longValue();

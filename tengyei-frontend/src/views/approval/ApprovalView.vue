@@ -280,8 +280,17 @@ const isMyTurn = computed(() =>
 )
 const transferDialog = ref(false)
 const transferTarget = ref<number>()
+/* 管理员代为转交:审批人离职/停用导致单据卡死时的兜底。需指明转交谁的审批 */
+const isManageTransfer = computed(() => !isMyTurn.value && canManage.value)
+const transferFrom = ref<number>()
+const currentApprovers = computed(() =>
+  (detail.value?.nodes ?? [])
+    .filter((n) => n.status === 'APPROVING' && n.approverType !== 'CC' && n.approverId)
+    .map((n) => ({ id: n.approverId as number, name: n.approverName || String(n.approverId) }))
+)
 async function openTransfer() {
   transferTarget.value = undefined
+  transferFrom.value = currentApprovers.value.length === 1 ? currentApprovers.value[0].id : undefined
   if (!userOptions.value.length) await loadFlowRefs()
   transferDialog.value = true
 }
@@ -290,7 +299,12 @@ async function submitTransfer() {
     ElMessage.error('请选择转交对象')
     return
   }
-  await approvalApi.transfer(detail.value.id, transferTarget.value)
+  if (isManageTransfer.value && !transferFrom.value) {
+    ElMessage.error('请选择要转交谁的审批')
+    return
+  }
+  await approvalApi.transfer(detail.value.id, transferTarget.value,
+    isManageTransfer.value ? transferFrom.value : undefined)
   ElMessage.success('已转交')
   transferDialog.value = false
   detailDialog.value = false
@@ -994,6 +1008,13 @@ async function refreshStats() {
           <el-tooltip v-if="isMyTurn" :disabled="canTransfer" content="无转交权限,请联系管理员分配" placement="top">
             <el-button :disabled="!canTransfer" @click="openTransfer">转交</el-button>
           </el-tooltip>
+          <!-- 管理兜底:审批人离职/停用导致卡单时,流程管理员可代为转交 -->
+          <el-button
+            v-if="!isMyTurn && canManage && detail?.status === 'PENDING' && currentApprovers.length"
+            @click="openTransfer"
+          >
+            代为转交
+          </el-button>
           <el-tooltip v-if="isMyTurn" :disabled="canApprove" content="无审批通过权限,加签也不可用" placement="top">
             <el-button :disabled="!canApprove" @click="openAddSign">加签</el-button>
           </el-tooltip>
@@ -1052,7 +1073,10 @@ async function refreshStats() {
           <el-switch v-model="delegateForm.status" :active-value="1" :inactive-value="0" />
         </el-form-item>
       </el-form>
-      <p style="color: #909399; font-size: 12px; margin: 0 0 8px">生效期内,分派给你的审批将自动转由代理人处理</p>
+      <p style="color: #909399; font-size: 12px; margin: 0 0 8px">
+        生效期内,新流转到你的审批将自动转由代理人处理;
+        <b>设置前已在你待办中的审批不会自动转出</b>,如需处理请使用「转交」
+      </p>
       <template #footer>
         <el-button @click="delegateDialog = false">取消</el-button>
         <el-button type="primary" @click="submitDelegate">保存</el-button>
@@ -1060,7 +1084,15 @@ async function refreshStats() {
     </el-dialog>
 
     <!-- 转交 -->
-    <el-dialog v-model="transferDialog" title="转交审批" width="400px">
+    <el-dialog v-model="transferDialog" :title="isManageTransfer ? '代为转交审批' : '转交审批'" width="400px">
+      <el-select
+        v-if="isManageTransfer"
+        v-model="transferFrom"
+        placeholder="选择要转交谁的审批(原审批人)"
+        style="width: 100%; margin-bottom: 12px"
+      >
+        <el-option v-for="a in currentApprovers" :key="a.id" :label="a.name" :value="a.id" />
+      </el-select>
       <el-select v-model="transferTarget" placeholder="选择转交对象" filterable style="width: 100%">
         <el-option
           v-for="u in userOptions.filter((o) => o.id !== auth.userInfo?.userId)"

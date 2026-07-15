@@ -46,11 +46,12 @@ public class ApprovalInstanceController {
         return Result.ok();
     }
 
+    /** fromUserId 可选:manage 权限者代为转交多审批人节点时指明原审批人 */
     @PutMapping("/{id}/transfer")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:transfer','PERM_platform:approval:transfer')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:transfer','PERM_approval:manage','PERM_platform:approval:transfer','PERM_platform:approval:manage')")
     @Auditable(module = "审批", actionType = "UPDATE", description = "审批转交")
     public Result<Void> transfer(@PathVariable Long id, @RequestBody Map<String, Long> body) {
-        engineService.transfer(id, body.get("targetUserId"),
+        engineService.transfer(id, body.get("targetUserId"), body.get("fromUserId"),
             TenantContext.getUserId(), TenantContext.getUserName());
         return Result.ok();
     }

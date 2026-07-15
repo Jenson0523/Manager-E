@@ -25,8 +25,9 @@ export const approvalApi = {
   act: (id: number, action: 'APPROVE' | 'REJECT', comment?: string) =>
     request.put<never, void>(`/v1/approval/instances/${id}/act`, { action, comment }),
   cancel: (id: number) => request.put<never, void>(`/v1/approval/instances/${id}/cancel`),
-  transfer: (id: number, targetUserId: number) =>
-    request.put<never, void>(`/v1/approval/instances/${id}/transfer`, { targetUserId }),
+  /** fromUserId:管理员代为转交时指明原审批人(审批人本人转交无需传) */
+  transfer: (id: number, targetUserId: number, fromUserId?: number) =>
+    request.put<never, void>(`/v1/approval/instances/${id}/transfer`, { targetUserId, fromUserId }),
   resubmit: (id: number, formData?: Record<string, unknown>) =>
     request.put<never, void>(`/v1/approval/instances/${id}/resubmit`, { formData }),
   addSign: (id: number, targetUserId: number, position: 'PRE' | 'POST') =>

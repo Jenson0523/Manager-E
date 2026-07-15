@@ -161,7 +161,7 @@ public class PlatformRbacService {
     public void resetUserPassword(Long id, String password) {
         requirePlatformUser(id);
         if (!PasswordRule.isValid(password)) throw new BusinessException(422, PasswordRule.MESSAGE);
-        jdbc.update("UPDATE `user` SET password = ? WHERE id = ? AND tenant_id = 0",
+        jdbc.update("UPDATE `user` SET password = ?, pwd_changed_at = NOW() WHERE id = ? AND tenant_id = 0",
             passwordEncoder.encode(password), id);
     }
 

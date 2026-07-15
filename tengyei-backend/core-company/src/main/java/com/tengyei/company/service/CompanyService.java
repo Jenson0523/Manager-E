@@ -196,7 +196,7 @@ public class CompanyService {
         if (adminUserId == null) throw new BusinessException(404, "未找到该企业的管理员账号");
         String encoded = passwordEncoder.encode(newPassword);
         jdbcTemplate.update(
-            "UPDATE `user` SET password = ?, pwd_reset_required = 1, login_fail_count = 0, locked_until = NULL " +
+            "UPDATE `user` SET password = ?, pwd_reset_required = 1, login_fail_count = 0, locked_until = NULL, pwd_changed_at = NOW() " +
             "WHERE id = ?",
             encoded, adminUserId);
         log.info("Admin password reset for company {} user {}", companyId, adminUserId);

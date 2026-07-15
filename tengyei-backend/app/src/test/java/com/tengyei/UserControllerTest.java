@@ -66,6 +66,39 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
+    /** 改密踢会话:管理员重置密码后,该用户改密前签发的 token 立即失效,新密码登录恢复 */
+    @Test
+    void resetPasswordInvalidatesOldTokens() throws Exception {
+        String uname = "kick_" + System.nanoTime();
+        MvcResult created = mockMvc.perform(post("/api/v1/users")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"username":"%s","realName":"被踢者","phone":"13700000003",
+                     "password":"Admin@2026","roleIds":[%d]}
+                    """.formatted(uname, roleId)))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long newId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        String staffToken = OrgTestSupport.login(mockMvc, objectMapper, uname);
+        mockMvc.perform(get("/api/v1/notices")
+                .header("Authorization", "Bearer " + staffToken))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // JWT 签发时间为秒级精度,确保改密时间落在签发之后的秒
+        Thread.sleep(1100);
+        mockMvc.perform(put("/api/v1/users/" + newId + "/reset-password")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"Kicked@2026\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 旧 token 作废 → 401
+        mockMvc.perform(get("/api/v1/notices")
+                .header("Authorization", "Bearer " + staffToken))
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
     /** 越权防护:给用户分配角色时,平台角色(tenant 0)/其他公司角色被过滤,只有本公司角色生效 */
     @Test
     void assign_foreign_tenant_role_is_filtered() throws Exception {

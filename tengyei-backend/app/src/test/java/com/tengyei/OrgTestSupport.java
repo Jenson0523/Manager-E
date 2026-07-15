@@ -24,8 +24,11 @@ public final class OrgTestSupport {
 
     public record Seeded(long tenantId, long adminUserId, long roleId, String username) {}
 
+    private static final java.util.concurrent.atomic.AtomicInteger SEQ = new java.util.concurrent.atomic.AtomicInteger();
+
     public static Seeded seedCompanyAdmin(JdbcTemplate jdbc) {
-        String suffix = String.valueOf(System.nanoTime());
+        // nanoTime 末6位做 company_no 在共享 H2 里跑多了会撞唯一索引,叠加进程内自增序号去重
+        String suffix = System.nanoTime() + "" + SEQ.incrementAndGet();
         KeyHolder ck = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(

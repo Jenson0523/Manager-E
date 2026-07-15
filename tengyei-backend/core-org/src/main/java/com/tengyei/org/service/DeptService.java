@@ -186,7 +186,14 @@ public class DeptService {
         if (childCount != null && childCount > 0) {
             throw new BusinessException(409, "存在子部门，无法删除");
         }
-        // 清理 user_dept 关联
+        // 部门下还有在职人员时阻止删除,不再静默解除归属(人会变成无部门,数据范围/审批找领导都受影响)
+        Long members = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM user_dept ud JOIN `user` u ON u.id = ud.user_id " +
+            "AND u.is_deleted = 0 WHERE ud.dept_id = ?", Long.class, id);
+        if (members != null && members > 0) {
+            throw new BusinessException(409, "部门下仍有 " + members + " 名人员，请先将人员调整到其他部门");
+        }
+        // 清理已删除用户遗留的关联
         jdbcTemplate.update("DELETE FROM user_dept WHERE dept_id = ?", id);
         deptMapper.deleteById(id);
     }
