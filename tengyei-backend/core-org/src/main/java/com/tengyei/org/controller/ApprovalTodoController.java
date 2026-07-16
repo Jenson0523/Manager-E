@@ -34,6 +34,13 @@ public class ApprovalTodoController {
         return Result.ok(flowService.enabledForms());
     }
 
+    /** 当前用户所属部门:多部门员工发起审批时选提交部门用 */
+    @GetMapping("/my-depts")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")
+    public Result<List<java.util.Map<String, Object>>> myDepts() {
+        return Result.ok(engineService.myDepts());
+    }
+
     @GetMapping("/todo")
     @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:view','PERM_platform:approval:view')")
     public Result<List<ApprovalInstanceVO>> todo() {

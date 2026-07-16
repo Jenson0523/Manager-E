@@ -98,6 +98,9 @@ const applyFormType = ref('')
 const applyFields = ref<FormField[]>([])
 const applyValues = reactive<Record<string, unknown>>({})
 const applyJsonFallback = ref('{}')
+/* 多部门员工:发起时选提交部门,决定"部门负责人"审批走谁。单/无部门不显示此项 */
+const myDepts = ref<{ id: number; name: string }[]>([])
+const applyDeptId = ref<number>()
 
 function parseFields(json?: string): FormField[] {
   try {
@@ -144,6 +147,9 @@ async function openApply() {
     return
   }
   if (!userOptions.value.length) await loadFlowRefs()
+  // 多部门员工:拉本人部门,>=2 个时需选提交部门,默认主部门(第一个)
+  myDepts.value = await approvalApi.myDepts()
+  applyDeptId.value = myDepts.value.length ? myDepts.value[0].id : undefined
   applyCcUserIds.value = []
   resubmitId.value = null
   applyFormType.value = applyForms.value[0].formType
@@ -176,7 +182,14 @@ async function submitApply() {
     await approvalApi.resubmit(resubmitId.value, formData)
     ElMessage.success('已重新提交')
   } else {
-    await approvalApi.apply({ formType: applyFormType.value, formData, ccUserIds: applyCcUserIds.value })
+    if (myDepts.value.length >= 2 && !applyDeptId.value) {
+      ElMessage.error('请选择提交部门')
+      return
+    }
+    await approvalApi.apply({
+      formType: applyFormType.value, formData, ccUserIds: applyCcUserIds.value,
+      deptId: myDepts.value.length >= 2 ? applyDeptId.value : undefined,
+    })
     ElMessage.success('已提交审批')
   }
   resubmitId.value = null
@@ -950,6 +963,11 @@ async function refreshStats() {
         <el-form-item label="审批类型">
           <el-select v-model="applyFormType" style="width: 100%" @change="onApplyTypeChange">
             <el-option v-for="f in applyForms" :key="f.formType" :label="f.formName" :value="f.formType" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="myDepts.length >= 2" label="提交部门" required>
+          <el-select v-model="applyDeptId" style="width: 100%" placeholder="以哪个部门身份提交(决定部门负责人)">
+            <el-option v-for="d in myDepts" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
         <template v-if="applyFields.length">

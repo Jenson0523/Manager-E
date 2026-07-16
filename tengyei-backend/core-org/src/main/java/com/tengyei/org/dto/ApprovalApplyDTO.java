@@ -15,4 +15,6 @@ public class ApprovalApplyDTO {
     private Map<String, Object> formData;
     /** 抄送人(可空):知会即可,不占审批环节 */
     private List<Long> ccUserIds;
+    /** 发起部门(可空):多部门员工选择以哪个部门身份提交,决定部门负责人是谁;单部门可不传 */
+    private Long deptId;
 }

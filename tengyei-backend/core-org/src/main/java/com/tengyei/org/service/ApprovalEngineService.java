@@ -79,6 +79,14 @@ public class ApprovalEngineService {
         instance.setApplicantName(applicantName);
         instance.setStatus("PENDING");
         instance.setPriority(0);
+        // 多部门员工可选提交部门,校验确属本人部门后落库,供 DEPT_LEADER 解析
+        if (dto.getDeptId() != null) {
+            Long belongs = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM user_dept WHERE user_id = ? AND dept_id = ?",
+                Long.class, applicantId, dto.getDeptId());
+            if (belongs == null || belongs == 0) throw new BusinessException(422, "所选部门不属于你");
+            instance.setSubmitDeptId(dto.getDeptId());
+        }
         instanceMapper.insert(instance);
 
         int order = 0;
@@ -503,7 +511,8 @@ public class ApprovalEngineService {
                 return;
             }
             List<ApprovalResolverService.Approver> approvers = resolverService.resolveAll(
-                next.getApproverType(), next.getTargetUserId(), next.getTargetRoleId(), applicantId);
+                next.getApproverType(), next.getTargetUserId(), next.getTargetRoleId(),
+                applicantId, instance.getSubmitDeptId());
             if (approvers.isEmpty()) {
                 if (!"SELF_APPROVE".equals(next.getApproverType())) {
                     String typeLabel = switch (next.getApproverType()) {
@@ -802,6 +811,14 @@ public class ApprovalEngineService {
             "APPROVAL_TODO", "有转交给你的审批",
             operatorName + " 将审批 " + instance.getInstanceNo() + " 转交给你处理",
             "approval", instanceId);
+    }
+
+    /** 当前用户所属部门(id+名称,主部门在前),供发起审批选择提交部门 */
+    public List<Map<String, Object>> myDepts() {
+        return jdbcTemplate.queryForList(
+            "SELECT d.id, d.name FROM user_dept ud JOIN dept d ON d.id = ud.dept_id AND d.is_deleted = 0 " +
+            "WHERE ud.user_id = ? ORDER BY ud.is_primary DESC, d.id",
+            TenantContext.getUserId());
     }
 
     /** 手动催办:给当前节点全部审批人发站内消息。发起人/manage 可催,每单每小时限一次防骚扰 */

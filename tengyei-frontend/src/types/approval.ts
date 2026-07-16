@@ -35,6 +35,8 @@ export interface ApprovalApplyDTO {
   formType: string
   formData: Record<string, unknown>
   ccUserIds?: number[]
+  /** 多部门员工发起时所选提交部门,决定部门负责人 */
+  deptId?: number
 }
 
 export interface FormField {

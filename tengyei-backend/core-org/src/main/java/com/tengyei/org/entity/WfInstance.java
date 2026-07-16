@@ -22,4 +22,6 @@ public class WfInstance extends BaseEntity {
     private String status;
     private String currentNode;
     private Integer priority;
+    /** 发起时所选部门(多部门员工):部门负责人(DEPT_LEADER)按此解析,为空回退主部门 */
+    private Long submitDeptId;
 }

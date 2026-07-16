@@ -37,6 +37,68 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 多部门员工发起时选提交部门 → 部门负责人按所选部门解析,而非主部门 */
+    @Test
+    void deptLeaderResolvesBySubmitDept() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String adminToken = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        long tenant = seeded.tenantId();
+
+        long leaderA = seedPlainUser(tenant, "leadA_");
+        long leaderB = seedPlainUser(tenant, "leadB_");
+        jdbcTemplate.update(
+            "INSERT INTO dept (tenant_id,name,parent_id,leader_id,sort_order,status,is_deleted,created_at,updated_at) " +
+            "VALUES (?,?,0,?,1,1,0,NOW(),NOW())", tenant, "技术部_" + System.nanoTime(), leaderA);
+        Long deptA = jdbcTemplate.queryForObject(
+            "SELECT id FROM dept WHERE tenant_id=? ORDER BY id DESC LIMIT 1", Long.class, tenant);
+        jdbcTemplate.update(
+            "INSERT INTO dept (tenant_id,name,parent_id,leader_id,sort_order,status,is_deleted,created_at,updated_at) " +
+            "VALUES (?,?,0,?,1,1,0,NOW(),NOW())", tenant, "项目部_" + System.nanoTime(), leaderB);
+        Long deptB = jdbcTemplate.queryForObject(
+            "SELECT id FROM dept WHERE tenant_id=? ORDER BY id DESC LIMIT 1", Long.class, tenant);
+
+        // 申请人属两个部门,主部门=deptA,授审批发起权限
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id,name,code,data_scope,is_preset,status,is_deleted,created_at,updated_at) " +
+            "VALUES (?,?,?,?,0,1,0,NOW(),NOW())", tenant, "申请角色", "applicant_" + System.nanoTime(), "self");
+        Long applRole = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id=? ORDER BY id DESC LIMIT 1", Long.class, tenant);
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id,permission_id,created_at) " +
+            "SELECT ?,id,NOW() FROM permission WHERE code IN ('approval:view','approval:apply')", applRole);
+        String applicant = "appl_" + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id,user_no,username,password,real_name,phone,dept_id,is_super_admin,status,pwd_reset_required,is_deleted,created_at,updated_at) " +
+            "VALUES (?,?,?,?,?,?,?,0,1,0,0,NOW(),NOW())",
+            tenant, "U-APL", applicant, OrgTestSupport.ADMIN_PWD_HASH, "多部门员工", "13900003001", deptA);
+        Long applId = jdbcTemplate.queryForObject("SELECT id FROM user WHERE username=?", Long.class, applicant);
+        jdbcTemplate.update("INSERT INTO user_role (user_id,role_id,created_at) VALUES (?,?,NOW())", applId, applRole);
+        jdbcTemplate.update("INSERT INTO user_dept (user_id,dept_id,is_primary,created_at) VALUES (?,?,1,NOW())", applId, deptA);
+        jdbcTemplate.update("INSERT INTO user_dept (user_id,dept_id,is_primary,created_at) VALUES (?,?,0,NOW())", applId, deptB);
+
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"部门负责人\",\"approverType\":\"DEPT_LEADER\"," +
+            "\"resolveMode\":\"FIRST\",\"orderBy\":1}]}").replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"dl\",\"formName\":\"部门审批单\",\"processKey\":\"DL\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 以 deptB 身份提交 → 审批人应是 deptB 的负责人 leaderB(不是主部门 deptA 的 leaderA)
+        String applToken = OrgTestSupport.login(mockMvc, objectMapper, applicant);
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + applToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"dl\",\"formData\":{},\"deptId\":" + deptB + "}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long instId = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        Long approver = jdbcTemplate.queryForObject(
+            "SELECT approver_id FROM wf_node WHERE instance_id=? AND status='APPROVING'", Long.class, instId);
+        org.junit.jupiter.api.Assertions.assertEquals(leaderB, approver);
+    }
+
     /** 会签/或签并列审批人驳回,应遵循节点配置的驳回策略(修复前并列行策略丢失会错误终结) */
     @Test
     void siblingRejectRespectsNodePolicy() throws Exception {

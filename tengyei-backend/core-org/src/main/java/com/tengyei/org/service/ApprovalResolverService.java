@@ -22,6 +22,14 @@ public class ApprovalResolverService {
      * ROLE 返回角色下所有有效用户（配合 ALL 会签 / ANYONE 或签）；其余类型单人。
      */
     public List<Approver> resolveAll(String approverType, Long targetUserId, Long targetRoleId, Long applicantId) {
+        return resolveAll(approverType, targetUserId, targetRoleId, applicantId, null);
+    }
+
+    /**
+     * @param submitDeptId 多部门员工发起时所选部门,DEPT_LEADER 按此解析;为空回退用户主部门
+     */
+    public List<Approver> resolveAll(String approverType, Long targetUserId, Long targetRoleId,
+                                     Long applicantId, Long submitDeptId) {
         if ("SELF_APPROVE".equals(approverType)) return List.of();
 
         if ("ROLE".equals(approverType)) {
@@ -35,7 +43,9 @@ public class ApprovalResolverService {
         Long approverId = switch (approverType) {
             case "LEADER" -> queryLong("SELECT leader_id FROM `user` WHERE id = ?", applicantId);
             case "DEPT_LEADER" -> {
-                Long deptId = queryLong("SELECT dept_id FROM `user` WHERE id = ?", applicantId);
+                // 优先用发起时选择的部门,没有则回退主部门
+                Long deptId = submitDeptId != null ? submitDeptId
+                    : queryLong("SELECT dept_id FROM `user` WHERE id = ?", applicantId);
                 yield deptId == null ? null : queryLong("SELECT leader_id FROM dept WHERE id = ?", deptId);
             }
             case "SPECIFIC_USER" -> targetUserId;
