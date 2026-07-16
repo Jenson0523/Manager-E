@@ -97,6 +97,10 @@ class ApprovalEngineTest {
         Long approver = jdbcTemplate.queryForObject(
             "SELECT approver_id FROM wf_node WHERE instance_id=? AND status='APPROVING'", Long.class, instId);
         org.junit.jupiter.api.Assertions.assertEquals(leaderB, approver);
+        // 所选部门须真正落库(退回上一节点等再次解析时会从DB重载,否则会丢失所选部门)
+        Long persisted = jdbcTemplate.queryForObject(
+            "SELECT submit_dept_id FROM wf_instance WHERE id=?", Long.class, instId);
+        org.junit.jupiter.api.Assertions.assertEquals(deptB, persisted);
     }
 
     /** 会签/或签并列审批人驳回,应遵循节点配置的驳回策略(修复前并列行策略丢失会错误终结) */
