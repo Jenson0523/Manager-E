@@ -55,24 +55,26 @@ public class UserService {
             }
         } else if ("dept".equals(scope)) {
             Set<Long> userDeptIds = getCurrentUserDeptIds();
-            if (!userDeptIds.isEmpty()) {
-                Set<Long> allDeptIds = new LinkedHashSet<>();
-                for (Long did : userDeptIds) {
-                    allDeptIds.addAll(collectSubDeptIds(did));
-                }
-                if (deptId != null) {
-                    // Filter by selected dept, but only within allowed scope
-                    if (allDeptIds.contains(deptId)) {
-                        qw.inSql(User::getId,
-                            "SELECT user_id FROM user_dept WHERE dept_id = " + deptId);
-                    } else {
-                        return PageResult.of(List.of(), 0, page, size);
-                    }
-                } else {
-                    String inClause = allDeptIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+            if (userDeptIds.isEmpty()) {
+                // dept 数据范围但本人未分配部门:看不到任何人(原来会漏成看全公司)
+                return PageResult.of(List.of(), 0, page, size);
+            }
+            Set<Long> allDeptIds = new LinkedHashSet<>();
+            for (Long did : userDeptIds) {
+                allDeptIds.addAll(collectSubDeptIds(did));
+            }
+            if (deptId != null) {
+                // Filter by selected dept, but only within allowed scope
+                if (allDeptIds.contains(deptId)) {
                     qw.inSql(User::getId,
-                        "SELECT user_id FROM user_dept WHERE dept_id IN (" + inClause + ")");
+                        "SELECT user_id FROM user_dept WHERE dept_id = " + deptId);
+                } else {
+                    return PageResult.of(List.of(), 0, page, size);
                 }
+            } else {
+                String inClause = allDeptIds.stream().map(String::valueOf).collect(Collectors.joining(","));
+                qw.inSql(User::getId,
+                    "SELECT user_id FROM user_dept WHERE dept_id IN (" + inClause + ")");
             }
         } else if ("self".equals(scope)) {
             qw.eq(User::getId, TenantContext.getUserId());
@@ -88,6 +90,12 @@ public class UserService {
         if (deptId != null && !"dept".equals(scope)) {
             qw.inSql(User::getId,
                 "SELECT user_id FROM user_dept WHERE dept_id = " + deptId);
+        }
+
+        // 角色筛选下推到 SQL(分页前),原来在分页后 continue 过滤导致每页数量不足/总数错乱
+        if (roleId != null) {
+            qw.inSql(User::getId,
+                "SELECT user_id FROM user_role WHERE role_id = " + roleId);
         }
 
         qw.orderByDesc(User::getId);
@@ -121,7 +129,6 @@ public class UserService {
         List<UserVO> vos = new ArrayList<>();
         for (User u : result.getRecords()) {
             List<Long> roleIds = roleIdsByUser.getOrDefault(u.getId(), List.of());
-            if (roleId != null && !roleIds.contains(roleId)) continue;
             List<Long> deptIds = deptIdsByUser.getOrDefault(u.getId(), List.of());
 
             vos.add(UserVO.builder()

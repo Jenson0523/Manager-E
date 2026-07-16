@@ -546,6 +546,7 @@ public class ApprovalEngineService {
                     sibling.setTargetUserId(next.getTargetUserId());
                     sibling.setTargetRoleId(next.getTargetRoleId());
                     sibling.setResolveMode(mode);
+                    sibling.setRejectPolicy(next.getRejectPolicy()); // 会签/或签并列行也要带驳回策略,否则非首个审批人驳回会错误终结
                     sibling.setNodeOrder(next.getNodeOrder());
                     sibling.setApproverId(approvers.get(i).id());
                     sibling.setApproverName(approvers.get(i).name());

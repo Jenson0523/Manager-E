@@ -66,6 +66,68 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.code").value(0));
     }
 
+    /** 按角色筛选:筛选下推到SQL,total 与 records 只含该角色用户(修复前分页后过滤导致total错乱) */
+    @Test
+    void filterByRolePaginatesCorrectly() throws Exception {
+        // 新建一个角色,只给一个用户挂上
+        MvcResult roleRes = mockMvc.perform(post("/api/v1/roles")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"筛选角色\",\"code\":\"filt_" + System.nanoTime() + "\",\"dataScope\":\"self\"}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long filtRole = objectMapper.readTree(roleRes.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        String uname = "filtered_" + System.nanoTime();
+        mockMvc.perform(post("/api/v1/users")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"username":"%s","realName":"筛选用户","phone":"13700009999",
+                     "password":"Admin@2026","roleIds":[%d]}
+                    """.formatted(uname, filtRole)))
+                .andExpect(jsonPath("$.code").value(0));
+
+        mockMvc.perform(get("/api/v1/users?page=1&size=20&roleId=" + filtRole)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records.length()").value(1))
+                .andExpect(jsonPath("$.data.records[0].username").value(uname));
+    }
+
+    /** dept 数据范围但用户未分配部门:看不到任何人(修复前会漏成看全公司) */
+    @Test
+    void deptScopeWithoutDeptSeesNobody() throws Exception {
+        MvcResult roleRes = mockMvc.perform(post("/api/v1/roles")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"部门范围\",\"code\":\"deptsc_" + System.nanoTime() + "\",\"dataScope\":\"dept\"}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long deptRole = objectMapper.readTree(roleRes.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+        // 给该角色授"查看人员"
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id,permission_id,created_at) " +
+            "SELECT ?,id,NOW() FROM permission WHERE code='user:view'", deptRole);
+
+        String uname = "deptscoped_" + System.nanoTime();
+        mockMvc.perform(post("/api/v1/users")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"username":"%s","realName":"部门范围用户","phone":"13700008888",
+                     "password":"Admin@2026","roleIds":[%d]}
+                    """.formatted(uname, deptRole)))
+                .andExpect(jsonPath("$.code").value(0));
+
+        String scopedToken = OrgTestSupport.login(mockMvc, objectMapper, uname);
+        mockMvc.perform(get("/api/v1/users?page=1&size=20")
+                .header("Authorization", "Bearer " + scopedToken))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(0));
+    }
+
     /** Excel 导入:合法行成功入库,非法行(弱密码)带行号报错,互不影响 */
     @Test
     void importUsersPartialSuccess() throws Exception {

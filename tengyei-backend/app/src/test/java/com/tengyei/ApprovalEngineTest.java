@@ -37,6 +37,72 @@ class ApprovalEngineTest {
         adminUserId = seeded.adminUserId();
     }
 
+    /** 会签/或签并列审批人驳回,应遵循节点配置的驳回策略(修复前并列行策略丢失会错误终结) */
+    @Test
+    void siblingRejectRespectsNodePolicy() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbcTemplate);
+        String adminToken = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        long tenant = seeded.tenantId();
+
+        // 审批角色 + 授审批权限
+        jdbcTemplate.update(
+            "INSERT INTO role (tenant_id,name,code,data_scope,is_preset,status,is_deleted,created_at,updated_at) " +
+            "VALUES (?,?,?,?,0,1,0,NOW(),NOW())", tenant, "审批组", "appr_grp_" + System.nanoTime(), "all");
+        Long apprRole = jdbcTemplate.queryForObject(
+            "SELECT id FROM role WHERE tenant_id=? ORDER BY id DESC LIMIT 1", Long.class, tenant);
+        jdbcTemplate.update(
+            "INSERT INTO role_permission (role_id,permission_id,created_at) " +
+            "SELECT ?,id,NOW() FROM permission WHERE code IN ('approval:view','approval:approve','approval:reject')", apprRole);
+
+        String u1 = "sib1_" + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id,user_no,username,password,real_name,phone,is_super_admin,status,pwd_reset_required,is_deleted,created_at,updated_at) " +
+            "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())", tenant, "U-S1", u1, OrgTestSupport.ADMIN_PWD_HASH, "审批甲", "13900002001");
+        Long id1 = jdbcTemplate.queryForObject("SELECT id FROM user WHERE username=?", Long.class, u1);
+        String u2 = "sib2_" + System.nanoTime();
+        jdbcTemplate.update(
+            "INSERT INTO user (tenant_id,user_no,username,password,real_name,phone,is_super_admin,status,pwd_reset_required,is_deleted,created_at,updated_at) " +
+            "VALUES (?,?,?,?,?,?,0,1,0,0,NOW(),NOW())", tenant, "U-S2", u2, OrgTestSupport.ADMIN_PWD_HASH, "审批乙", "13900002002");
+        Long id2 = jdbcTemplate.queryForObject("SELECT id FROM user WHERE username=?", Long.class, u2);
+        jdbcTemplate.update("INSERT INTO user_role (user_id,role_id,created_at) VALUES (?,?,NOW())", id1, apprRole);
+        jdbcTemplate.update("INSERT INTO user_role (user_id,role_id,created_at) VALUES (?,?,NOW())", id2, apprRole);
+
+        // 或签(ANYONE) + 退回发起人(TO_INITIATOR)
+        String cfg = ("{\"nodes\":[{\"key\":\"n1\",\"name\":\"审批\",\"approverType\":\"ROLE\"," +
+            "\"resolveMode\":\"ANYONE\",\"orderBy\":1,\"targetRoleId\":" + apprRole + ",\"rejectPolicy\":\"TO_INITIATOR\"}]}")
+            .replace("\"", "\\\"");
+        mockMvc.perform(post("/api/v1/approval/flows")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"sib\",\"formName\":\"并列驳回单\",\"processKey\":\"SIB\"," +
+                    "\"configJson\":\"" + cfg + "\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+        MvcResult r = mockMvc.perform(post("/api/v1/approval/instances")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"formType\":\"sib\",\"formData\":{}}"))
+                .andExpect(jsonPath("$.code").value(0)).andReturn();
+        long instId = objectMapper.readTree(r.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // 并列行(sibling)= wf_node 中后插入的行(id 更大),用它的审批人驳回
+        Long siblingApprover = jdbcTemplate.queryForObject(
+            "SELECT approver_id FROM wf_node WHERE instance_id=? AND status='APPROVING' ORDER BY id DESC LIMIT 1",
+            Long.class, instId);
+        String siblingUser = id1.equals(siblingApprover) ? u1 : u2;
+        String siblingToken = OrgTestSupport.login(mockMvc, objectMapper, siblingUser);
+
+        mockMvc.perform(put("/api/v1/approval/instances/" + instId + "/act")
+                .header("Authorization", "Bearer " + siblingToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"action\":\"REJECT\",\"comment\":\"退回\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // TO_INITIATOR → RETURNED(可重新提交);修复前并列行策略丢失会错误变 REJECTED
+        String status = jdbcTemplate.queryForObject(
+            "SELECT status FROM wf_instance WHERE id=?", String.class, instId);
+        org.junit.jupiter.api.Assertions.assertEquals("RETURNED", status);
+    }
+
     /** 催办:发起人可催办,一小时内重复催办 429 */
     @Test
     void urgeOncePerHour() throws Exception {
