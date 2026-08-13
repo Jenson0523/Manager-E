@@ -9,6 +9,7 @@ export const MODULE_LABELS: Record<string, string> = {
   setting: '系统设置',
   approval: '审批中心',
   announcement: '通知管理',
+  contract: '合同管理',
   platform: '平台管理',
   module: '模块管理',
 }

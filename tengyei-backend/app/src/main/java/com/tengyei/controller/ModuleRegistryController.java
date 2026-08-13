@@ -1,5 +1,7 @@
 package com.tengyei.controller;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tengyei.common.annotation.Auditable;
 import com.tengyei.common.response.Result;
 import jakarta.validation.Valid;
@@ -8,10 +10,17 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/modules")
@@ -19,6 +28,7 @@ import java.util.Map;
 public class ModuleRegistryController {
 
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
     @GetMapping
     @PreAuthorize("hasAuthority('PERM_*') or hasAuthority('PERM_platform:module:view')")
@@ -52,17 +62,73 @@ public class ModuleRegistryController {
     }
 
     /**
-     * 已启用模块列表（公开给所有已登录用户）
-     * 用于前端动态渲染业务模块入口，平台方在模块管理中注册/启用后即生效
+     * 当前用户可见的已启用模块（前端据此渲染「业务应用」菜单并注册动态路由）。
+     * 按模块声明的 permissions 过滤：持有其中任一权限点才可见，避免无权限用户点进去才撞 403。
+     * 模块未声明权限点（permissions 为空/[]）时对所有登录用户可见，保持存量模块行为不变。
      */
     @GetMapping("/active")
     public Result<List<Map<String, Object>>> activeModules() {
-        List<Map<String, Object>> records = jdbcTemplate.queryForList(
-            "SELECT id, module_code AS moduleCode, module_name AS moduleName, " +
-            "version, entry_url AS entryUrl, menu_config AS menuConfig, " +
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT id, module_code, module_name, version, entry_url, menu_config, " +
             "permissions, status FROM module_registry WHERE status = 1 ORDER BY id"
         );
-        return Result.ok(records);
+
+        Set<String> authorities = currentAuthorities();
+        boolean all = authorities.contains("PERM_*");
+
+        List<Map<String, Object>> visible = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String permissions = (String) column(row, "permissions");
+            if (!all && !moduleVisible(permissions, authorities)) continue;
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", column(row, "id"));
+            m.put("moduleCode", column(row, "module_code"));
+            m.put("moduleName", column(row, "module_name"));
+            m.put("version", column(row, "version"));
+            m.put("entryUrl", column(row, "entry_url"));
+            m.put("menuConfig", column(row, "menu_config"));
+            m.put("permissions", permissions);
+            m.put("status", column(row, "status"));
+            visible.add(m);
+        }
+        return Result.ok(visible);
+    }
+
+    /**
+     * 列标签大小写随数据库方言而异(H2 会把未加引号的列名/别名全部大写),
+     * 统一忽略大小写取值,避免"MySQL 上过滤生效、H2 上静默失效"这类只在某一侧暴露的问题。
+     */
+    private Object column(Map<String, Object> row, String columnName) {
+        Object v = row.get(columnName);
+        if (v != null) return v;
+        v = row.get(columnName.toUpperCase());
+        if (v != null) return v;
+        for (Map.Entry<String, Object> e : row.entrySet()) {
+            if (e.getKey().equalsIgnoreCase(columnName)) return e.getValue();
+        }
+        return null;
+    }
+
+    private Set<String> currentAuthorities() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return Set.of();
+        return auth.getAuthorities().stream()
+            .map(GrantedAuthority::getAuthority)
+            .collect(Collectors.toSet());
+    }
+
+    private boolean moduleVisible(String permissionsJson, Set<String> authorities) {
+        if (permissionsJson == null || permissionsJson.isBlank()) return true;
+        List<String> declared;
+        try {
+            declared = objectMapper.readValue(permissionsJson, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            // 权限配置写坏了不应让模块整体消失,退回"可见",由接口层继续兜底鉴权
+            return true;
+        }
+        if (declared.isEmpty()) return true;
+        return declared.stream().anyMatch(p -> authorities.contains("PERM_" + p));
     }
 
     @PostMapping

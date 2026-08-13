@@ -41,6 +41,8 @@ async function onNoticeClick(n: NoticeVO) {
   }
   if (n.bizType === 'approval' || n.bizType === 'wf_node') {
     router.push('/company/approval')
+  } else if (n.bizType === 'contract') {
+    router.push('/company/contract')
   }
 }
 async function readAll() {

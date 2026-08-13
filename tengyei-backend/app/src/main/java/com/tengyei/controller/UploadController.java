@@ -70,9 +70,9 @@ public class UploadController {
         }
     }
 
-    /** 审批表单附件:常见文档/图片/压缩包,≤10MB,返回 {url, name} */
+    /** 业务附件(审批表单/合同扫描件等):常见文档/图片/压缩包,≤10MB,返回 {url, name} */
     @PostMapping("/upload/file")
-    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply')")
+    @PreAuthorize("hasAnyAuthority('PERM_*','PERM_approval:apply','PERM_platform:approval:apply','PERM_contract:manage')")
     public Result<java.util.Map<String, String>> uploadFile(@RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) return Result.fail(422, "上传文件不能为空");
         String originalName = file.getOriginalFilename();
