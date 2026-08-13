@@ -112,6 +112,13 @@ const form = reactive({
   remark: '',
 })
 
+// 终止＝作废,后端要求 contract:disable。无该权限就别把选项摆出来让用户选了再被拒;
+// 但若合同本来就是已终止,保留该项,否则编辑备注时会被强行改成别的状态。
+const editableStatuses = computed(() =>
+  canDisable.value || form.status === 'TERMINATED'
+    ? CONTRACT_STATUSES
+    : CONTRACT_STATUSES.filter((s) => s.value !== 'TERMINATED'))
+
 function openCreate() {
   Object.assign(form, {
     id: undefined,
@@ -424,7 +431,7 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="form.status" style="width: 100%">
-            <el-option v-for="s in CONTRACT_STATUSES" :key="s.value" :label="s.label" :value="s.value" />
+            <el-option v-for="s in editableStatuses" :key="s.value" :label="s.label" :value="s.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="附件">

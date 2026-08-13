@@ -19,6 +19,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -149,6 +150,58 @@ class ContractControllerTest {
         mockMvc.perform(delete("/api/v1/contracts/" + adminContractId)
                 .header("Authorization", "Bearer " + salesToken))
                 .andExpect(jsonPath("$.code").value(403));
+    }
+
+    /** 只有 manage 的账号不能把合同置为终止(终止＝作废,属 contract:disable) */
+    @Test
+    void manageOnlyUser_cannotTerminateContract() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbc);
+        long tenantId = seeded.tenantId();
+        long editorId = insertUser(tenantId, "editor_" + System.nanoTime());
+        long roleId = insertRole(tenantId, "all");
+        jdbc.update("INSERT INTO user_role (user_id, role_id, created_at) VALUES (?,?,NOW())",
+                editorId, roleId);
+        jdbc.update("INSERT INTO role_permission (role_id, permission_id, created_at) " +
+                "SELECT ?, id, NOW() FROM permission WHERE code IN ('contract:view','contract:manage')", roleId);
+
+        String token = OrgTestSupport.login(mockMvc, objectMapper, usernameOf(editorId));
+        String res = mockMvc.perform(post("/api/v1/contracts").header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON)
+                .content("{\"name\":\"待终止合同\",\"partyB\":\"乙方\",\"status\":\"EFFECTIVE\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        long id = objectMapper.readTree(res).path("data").path("id").asLong();
+
+        // 走状态接口终止 -> 403
+        mockMvc.perform(put("/api/v1/contracts/" + id + "/status")
+                .header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON).content("{\"status\":\"TERMINATED\"}"))
+                .andExpect(jsonPath("$.code").value(403));
+
+        // 走保存接口绕后终止 -> 同样 403
+        mockMvc.perform(post("/api/v1/contracts").header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON)
+                .content("{\"id\":" + id + ",\"name\":\"待终止合同\",\"partyB\":\"乙方\",\"status\":\"TERMINATED\"}"))
+                .andExpect(jsonPath("$.code").value(403));
+
+        // 允许的状态流转不受影响
+        mockMvc.perform(put("/api/v1/contracts/" + id + "/status")
+                .header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON).content("{\"status\":\"COMPLETED\"}"))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    /** 负责人只能是本企业在职用户,否则会把他租户员工的姓名/部门带进本租户合同 */
+    @Test
+    void ownerFromAnotherTenant_isRejected() throws Exception {
+        var mine = OrgTestSupport.seedCompanyAdmin(jdbc);
+        var other = OrgTestSupport.seedCompanyAdmin(jdbc);
+        String token = OrgTestSupport.login(mockMvc, objectMapper, mine.username());
+
+        mockMvc.perform(post("/api/v1/contracts").header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON)
+                .content("{\"name\":\"越租户合同\",\"partyB\":\"乙方\",\"ownerId\":" + other.adminUserId() + "}"))
+                .andExpect(jsonPath("$.code").value(422));
     }
 
     /** 无合同权限的账号不应在「业务应用」看到合同入口(否则点进去才撞 403) */

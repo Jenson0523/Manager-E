@@ -25,10 +25,13 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 合同台账。数据可见范围复用角色上的 data_scope(all/branch/dept/self)，
@@ -41,6 +44,8 @@ public class ContractService {
 
     /** 履约中的合同才需要关心到期；草稿/已完成/已终止不参与临期计算与提醒 */
     private static final Set<String> ACTIVE_STATUS = Set.of("EFFECTIVE", "PERFORMING");
+    /** 终止＝作废，与删除同属 contract:disable，不能被 contract:manage 顺手做掉 */
+    private static final String TERMINATED = "TERMINATED";
     private static final Set<String> ALL_STATUS =
         Set.of("DRAFT", "EFFECTIVE", "PERFORMING", "COMPLETED", "TERMINATED");
     private static final Set<String> ALL_TYPE =
@@ -89,7 +94,9 @@ public class ContractService {
         qw.orderByDesc(Contract::getId);
 
         Page<Contract> p = contractMapper.selectPage(new Page<>(page, size), qw);
-        return PageResult.from(p, this::toVO);
+        PageResult<ContractVO> result = PageResult.from(p, this::toVO);
+        fillDisplayNames(result.getRecords());
+        return result;
     }
 
     /** 列表页顶部统计：总数 / 临期 / 已过期，口径与列表一致 */
@@ -126,7 +133,9 @@ public class ContractService {
     public ContractVO detail(Long id) {
         Contract c = requireContract(id);
         assertInScope(c);
-        return toVO(c);
+        ContractVO vo = toVO(c);
+        fillDisplayNames(List.of(vo));
+        return vo;
     }
 
     /* ---------------- 写入 ---------------- */
@@ -141,9 +150,11 @@ public class ContractService {
 
         Long tenantId = TenantContext.getTenantId();
         Contract c;
+        String oldStatus = null;
         if (dto.getId() != null) {
             c = requireContract(dto.getId());
             assertInScope(c);
+            oldStatus = c.getStatus();
         } else {
             c = new Contract();
             c.setTenantId(tenantId);
@@ -152,6 +163,7 @@ public class ContractService {
 
         // 负责人默认落到经办人自己，否则 self 范围的人一存就看不见自己刚建的合同
         Long ownerId = dto.getOwnerId() != null ? dto.getOwnerId() : TenantContext.getUserId();
+        assertOwnerInTenant(ownerId, tenantId);
         c.setOwnerId(ownerId);
         fillOwnerOrg(c, ownerId);
 
@@ -170,7 +182,9 @@ public class ContractService {
         c.setSignDate(dto.getSignDate());
         c.setStartDate(dto.getStartDate());
         c.setEndDate(dto.getEndDate());
-        c.setStatus(StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : "DRAFT");
+        String newStatus = StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : "DRAFT";
+        assertCanTerminate(oldStatus, newStatus);
+        c.setStatus(newStatus);
         c.setRemark(dto.getRemark());
         c.setAttachments(writeAttachments(dto.getAttachments()));
 
@@ -192,6 +206,7 @@ public class ContractService {
         }
         Contract c = requireContract(id);
         assertInScope(c);
+        assertCanTerminate(c.getStatus(), status);
         c.setStatus(status);
         contractMapper.updateById(c);
     }
@@ -299,6 +314,33 @@ public class ContractService {
         return c;
     }
 
+    /**
+     * 终止合同等同作废，须持 contract:disable。控制器为兼顾「生效/完成」放行了 contract:manage，
+     * 这里再按目标状态收紧；只拦「转入终止」，已终止的合同改备注等不受影响。
+     */
+    private void assertCanTerminate(String oldStatus, String newStatus) {
+        if (!TERMINATED.equals(newStatus) || TERMINATED.equals(oldStatus)) return;
+        var auth = org.springframework.security.core.context.SecurityContextHolder
+            .getContext().getAuthentication();
+        boolean allowed = auth != null && auth.getAuthorities().stream()
+            .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+            .anyMatch(x -> "PERM_*".equals(x) || "PERM_contract:disable".equals(x));
+        if (!allowed) {
+            throw new BusinessException(403, "终止合同需要「作废/删除合同」权限");
+        }
+    }
+
+    /** 负责人必须是本租户在职用户，否则会把他租户员工的部门/分支甚至姓名带进本租户合同 */
+    private void assertOwnerInTenant(Long ownerId, Long tenantId) {
+        if (ownerId == null) return;
+        Long cnt = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM `user` WHERE id = ? AND tenant_id = ? AND is_deleted = 0",
+            Long.class, ownerId, tenantId);
+        if (cnt == null || cnt == 0) {
+            throw new BusinessException(422, "负责人不存在或不属于本企业");
+        }
+    }
+
     private void validateEnums(ContractSaveDTO dto) {
         if (StringUtils.hasText(dto.getType()) && !ALL_TYPE.contains(dto.getType())) {
             throw new BusinessException(422, "非法的合同类型:" + dto.getType());
@@ -323,8 +365,9 @@ public class ContractService {
 
     private String nextContractNo(Long tenantId) {
         String prefix = "HT" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
+        // 与 assertNoNotTaken(走 MyBatis-Plus,自动排除软删)口径一致:软删记录不占号
         Integer used = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM biz_contract WHERE tenant_id = ? AND contract_no LIKE ?",
+            "SELECT COUNT(*) FROM biz_contract WHERE tenant_id = ? AND is_deleted = 0 AND contract_no LIKE ?",
             Integer.class, tenantId, prefix + "%");
         int seq = (used == null ? 0 : used) + 1;
         String candidate = prefix + String.format("%03d", seq);
@@ -344,8 +387,10 @@ public class ContractService {
             c.setOwnerBranchId(null);
             return;
         }
+        // ORDER BY 保证多部门员工每次落到同一个部门,否则归属部门会在多次保存间漂移,
+        // 连带 data_scope=dept 的可见性时有时无。多部门场景下由哪个部门归属仍是产品问题(见审批的"选提交部门")。
         List<Long> deptIds = jdbcTemplate.queryForList(
-            "SELECT dept_id FROM user_dept WHERE user_id = ?", Long.class, ownerId);
+            "SELECT dept_id FROM user_dept WHERE user_id = ? ORDER BY dept_id", Long.class, ownerId);
         c.setOwnerDeptId(deptIds.isEmpty() ? null : deptIds.get(0));
         List<Long> branchIds = jdbcTemplate.queryForList(
             "SELECT branch_id FROM `user` WHERE id = ? AND is_deleted = 0", Long.class, ownerId);
@@ -392,22 +437,39 @@ public class ContractService {
         vo.setCreatedBy(c.getCreatedBy());
         vo.setCreatedAt(c.getCreatedAt());
 
-        if (c.getOwnerId() != null) {
-            vo.setOwnerName(queryOne(
-                "SELECT real_name FROM `user` WHERE id = ? AND is_deleted = 0", c.getOwnerId()));
-        }
-        if (c.getOwnerDeptId() != null) {
-            vo.setOwnerDeptName(queryOne(
-                "SELECT name FROM dept WHERE id = ? AND is_deleted = 0", c.getOwnerDeptId()));
-        }
+        // 负责人/部门名称由 fillDisplayNames 整页批量补齐,避免逐行查询造成 N+1
         if (c.getEndDate() != null && ACTIVE_STATUS.contains(c.getStatus())) {
             vo.setDaysToExpire(ChronoUnit.DAYS.between(LocalDate.now(), c.getEndDate()));
         }
         return vo;
     }
 
-    private String queryOne(String sql, Object arg) {
-        List<String> rows = jdbcTemplate.queryForList(sql, String.class, arg);
-        return rows.isEmpty() ? null : rows.get(0);
+    /** 整页一次性补齐负责人与归属部门名称:两条 IN 查询替代原先每行两条 */
+    private void fillDisplayNames(List<ContractVO> vos) {
+        if (vos.isEmpty()) return;
+        Long tenantId = TenantContext.getTenantId();
+
+        Map<Long, String> userNames = nameMap(
+            "SELECT id, real_name FROM `user` WHERE is_deleted = 0 AND tenant_id = ? AND id IN (%s)",
+            tenantId, vos.stream().map(ContractVO::getOwnerId).filter(Objects::nonNull).collect(Collectors.toSet()));
+        Map<Long, String> deptNames = nameMap(
+            "SELECT id, name FROM dept WHERE is_deleted = 0 AND tenant_id = ? AND id IN (%s)",
+            tenantId, vos.stream().map(ContractVO::getOwnerDeptId).filter(Objects::nonNull).collect(Collectors.toSet()));
+
+        for (ContractVO vo : vos) {
+            if (vo.getOwnerId() != null) vo.setOwnerName(userNames.get(vo.getOwnerId()));
+            if (vo.getOwnerDeptId() != null) vo.setOwnerDeptName(deptNames.get(vo.getOwnerDeptId()));
+        }
+    }
+
+    /** id 均来自数据库的 Long,直接内联进 IN 无注入风险(与 UserService 的 inSql 同做法) */
+    private Map<Long, String> nameMap(String sqlTemplate, Long tenantId, Set<Long> ids) {
+        if (ids.isEmpty()) return Map.of();
+        String inClause = ids.stream().map(String::valueOf).collect(Collectors.joining(","));
+        Map<Long, String> map = new HashMap<>();
+        jdbcTemplate.query(String.format(sqlTemplate, inClause),
+            rs -> { map.put(rs.getLong(1), rs.getString(2)); },
+            tenantId);
+        return map;
     }
 }
