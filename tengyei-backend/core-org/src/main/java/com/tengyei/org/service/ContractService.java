@@ -16,6 +16,7 @@ import com.tengyei.org.mapper.DeptMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -191,10 +193,15 @@ public class ContractService {
         // 到期日改动后重新允许提醒（否则改成新日期仍被旧的去重标记压住）
         c.setExpireNotifiedOn(null);
 
-        if (c.getId() == null) {
-            contractMapper.insert(c);
-        } else {
-            contractMapper.updateById(c);
+        // 查重与写入之间仍有并发窗口,由 uk_tenant_contract_no 兜底;把库层异常翻成可读提示
+        try {
+            if (c.getId() == null) {
+                contractMapper.insert(c);
+            } else {
+                contractMapper.updateById(c);
+            }
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(422, "合同编号已存在:" + no + "(编号一经使用不可重复,含已删除的合同)");
         }
         return c.getId();
     }
@@ -350,31 +357,39 @@ public class ContractService {
         }
     }
 
-    /** 合同编号租户内唯一（软删记录不占号） */
-    private void assertNoNotTaken(Long tenantId, String no, Long selfId) {
-        LambdaQueryWrapper<Contract> qw = new LambdaQueryWrapper<Contract>()
-            .eq(Contract::getTenantId, tenantId)
-            .eq(Contract::getContractNo, no);
+    /**
+     * 合同编号租户内永久唯一：编号一经使用即退役，删除后也不再复用（V21 的 uk_tenant_contract_no 兜底）。
+     * 必须走裸 SQL——MyBatis-Plus 会自动加 is_deleted = 0，看不到已删合同占用的编号，
+     * 那样查重通过、插入却撞唯一键。
+     */
+    private boolean contractNoTaken(Long tenantId, String no, Long selfId) {
+        StringBuilder sql = new StringBuilder(
+            "SELECT COUNT(*) FROM biz_contract WHERE tenant_id = ? AND contract_no = ?");
+        List<Object> args = new ArrayList<>(List.of(tenantId, no));
         if (selfId != null) {
-            qw.ne(Contract::getId, selfId);
+            sql.append(" AND id <> ?");
+            args.add(selfId);
         }
-        if (contractMapper.selectCount(qw) > 0) {
-            throw new BusinessException(422, "合同编号已存在:" + no);
+        Long cnt = jdbcTemplate.queryForObject(sql.toString(), Long.class, args.toArray());
+        return cnt != null && cnt > 0;
+    }
+
+    private void assertNoNotTaken(Long tenantId, String no, Long selfId) {
+        if (contractNoTaken(tenantId, no, selfId)) {
+            throw new BusinessException(422, "合同编号已存在:" + no + "(编号一经使用不可重复,含已删除的合同)");
         }
     }
 
     private String nextContractNo(Long tenantId) {
         String prefix = "HT" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
-        // 与 assertNoNotTaken(走 MyBatis-Plus,自动排除软删)口径一致:软删记录不占号
+        // 含软删一并计数：编号永久退役，已删合同仍占号
         Integer used = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM biz_contract WHERE tenant_id = ? AND is_deleted = 0 AND contract_no LIKE ?",
+            "SELECT COUNT(*) FROM biz_contract WHERE tenant_id = ? AND contract_no LIKE ?",
             Integer.class, tenantId, prefix + "%");
         int seq = (used == null ? 0 : used) + 1;
         String candidate = prefix + String.format("%03d", seq);
-        // 号段可能因删除/手填出现空洞造成撞号，顺延到第一个可用号
-        while (contractMapper.selectCount(new LambdaQueryWrapper<Contract>()
-            .eq(Contract::getTenantId, tenantId)
-            .eq(Contract::getContractNo, candidate)) > 0) {
+        // 号段可能因手填编号出现空洞造成撞号，顺延到第一个可用号
+        while (contractNoTaken(tenantId, candidate, null)) {
             candidate = prefix + String.format("%03d", ++seq);
         }
         return candidate;

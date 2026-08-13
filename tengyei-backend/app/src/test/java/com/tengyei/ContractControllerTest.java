@@ -86,6 +86,56 @@ class ContractControllerTest {
                 .andExpect(jsonPath("$.code").value(422));
     }
 
+    /** 编号永久退役:删掉合同后原编号也不能再用(V21 唯一键覆盖软删记录) */
+    @Test
+    void deletedContractNo_cannotBeReused() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbc);
+        String token = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+        String body = "{\"contractNo\":\"HT-RETIRED-001\",\"name\":\"甲\",\"partyB\":\"乙方\"}";
+
+        String res = mockMvc.perform(post("/api/v1/contracts").header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON).content(body))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        long id = objectMapper.readTree(res).path("data").path("id").asLong();
+
+        mockMvc.perform(delete("/api/v1/contracts/" + id).header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 软删后重用同一编号应被拒(而非撞唯一键抛 500)
+        mockMvc.perform(post("/api/v1/contracts").header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON).content(body))
+                .andExpect(jsonPath("$.code").value(422));
+    }
+
+    /** 自动编号必须跳过已退役(含软删)的号段,否则生成的号会撞唯一键 */
+    @Test
+    void autoContractNo_skipsRetiredNumbers() throws Exception {
+        var seeded = OrgTestSupport.seedCompanyAdmin(jdbc);
+        String token = OrgTestSupport.login(mockMvc, objectMapper, seeded.username());
+
+        String first = mockMvc.perform(post("/api/v1/contracts").header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON).content("{\"name\":\"甲\",\"partyB\":\"乙方\"}"))
+                .andReturn().getResponse().getContentAsString();
+        long firstId = objectMapper.readTree(first).path("data").path("id").asLong();
+        String firstNo = jdbc.queryForObject(
+            "SELECT contract_no FROM biz_contract WHERE id = ?", String.class, firstId);
+
+        mockMvc.perform(delete("/api/v1/contracts/" + firstId).header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0));
+
+        String second = mockMvc.perform(post("/api/v1/contracts").header("Authorization", "Bearer " + token)
+                .contentType(APPLICATION_JSON).content("{\"name\":\"乙\",\"partyB\":\"乙方\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn().getResponse().getContentAsString();
+        long secondId = objectMapper.readTree(second).path("data").path("id").asLong();
+        String secondNo = jdbc.queryForObject(
+            "SELECT contract_no FROM biz_contract WHERE id = ?", String.class, secondId);
+
+        org.junit.jupiter.api.Assertions.assertNotEquals(firstNo, secondNo,
+            "已删除合同的编号不应被重新分配");
+    }
+
     @Test
     void viewOnlyUser_canRead_butCannotCreateOrDelete() throws Exception {
         var seeded = OrgTestSupport.seedCompanyAdmin(jdbc);
