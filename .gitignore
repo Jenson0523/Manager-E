@@ -7,6 +7,10 @@
 Thumbs.db
 *.swp
 
+# Python 字节码(import deploy 时生成,会让 deploy.py 的工作区干净检查误报)
+__pycache__/
+*.pyc
+
 # Sensitive / local config (never push to GitHub)
 # 部署脚本内含服务器 root 口令 / DB 口令 / JWT secret 明文,一律不入库
 deploy.py
