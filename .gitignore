@@ -8,7 +8,10 @@ Thumbs.db
 *.swp
 
 # Sensitive / local config (never push to GitHub)
+# 部署脚本内含服务器 root 口令 / DB 口令 / JWT secret 明文,一律不入库
 deploy.py
+deploy_new_server.py
+server_setup.py
 tengyei-backend/app/src/main/resources/application-prod.yml
 tengyei-backend/app/target/
 tengyei-frontend/node_modules/
